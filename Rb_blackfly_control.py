@@ -42,7 +42,7 @@ triggDelay = 0      # trigger delay in ms
 exposureTime = 1    # exposure time in ms
 
 timeToSleep = 1000   # time that the computer sleeps between image acquisitions, in ms
-timeToWait = 1000   # time the camera waits for a new trigger before throwing an error, in ms
+timeToWait = 1000    # time the camera waits for a new trigger before throwing an error, in ms
 
 # Ensures sufficient cameras are found
 bus = PyCapture2.BusManager()

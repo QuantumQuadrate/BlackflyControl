@@ -20,7 +20,14 @@
 # SUFFERED BY LICENSEE AS A RESULT OF USING, MODIFYING OR DISTRIBUTING
 # THIS SOFTWARE OR ITS DERIVATIVES..
 #=============================================================================
+# For plotting
+from pyqtgraph.Qt import QtCore, QtGui
+import pyqtgraph as pg
+import urllib2, cStringIO
+from PIL import Image
+import collections
 
+# For Blackfly control
 import PyCapture2   #Python wrapper for BlackFly camera control software
 import time   #used to pause program execution
 import h5py   #package used to create and manage .hdf5 files
@@ -29,9 +36,26 @@ from sys import exit
 # from time import sleep
 import thread, time
 import numpy as np
-from scipy import misc
+import scipy
+from scipy import misc, ndimage
 
-
+# pyqtgraph part
+app = QtGui.QApplication([])
+## Create window with GraphicsView widget
+win = pg.GraphicsLayoutWidget()
+win.show()  ## show widget alone in its own window
+win.setWindowTitle('Pointgrey Monitor by Minho')
+view = win.addViewBox()
+view.setAspectLocked(True) # lock the aspect ratio so pixels are always square
+## Create image item and textitem
+img = pg.ImageItem()
+text= pg.TextItem()
+text2= pg.TextItem()
+view.addItem(img)
+view.addItem(text)
+view.addItem(text2)
+text.setAnchor((0,2))
+text2.setAnchor((-1,7))
 #
 # Main
 #
@@ -197,43 +221,56 @@ c.setConfiguration(grabTimeout = timeToWait)
 c.startCapture()
 
 imageNum = 0
-while True:     # loops indefinitely
-
-    # Attempts to retrieve an image from the camera buffer and save it to disk
+interval=45 # ms
+def updateData():
     try:
+        starttime=time.time()
         image = c.retrieveBuffer()
+        latency=int(1000 * (time.time() - starttime))
+    except PyCapture2.Fc2error as fc2Err:
+        print "Error retrieving buffer : ", fc2Err
         #image.save("test_images/MOT_image_{}.png".format(imageNum), 6) #if the directory does not exist, it will output an general failure error
         #imageNum += 1
         #the '6' indicates .png file format, see p. 99 of the PyCapture 2 manual for more info
-
         ## Saves the data to an hdf5 file
         #raw_image_data = PyCapture2.Image.getData(image)   #retrieves raw image data from the camera buffer
+    try:
         nrows = PyCapture2.Image.getRows(image)   #finds the number of rows in the image data
         ncols = PyCapture2.Image.getDataSize(image)/nrows   #finds the number of columns in the image data
-        print 'image size:{} x {}'.format(nrows, ncols)
+        #print 'image size:{} x {}'.format(nrows, ncols)
         #image_file = h5py.File("image_file.hdf5", "w")
         #image_data = image_file.create_dataset("image_dataset", (nrows, ncols), dtype='i')
         #image_data[:] = np.reshape(raw_image_data, (nrows, ncols), 'C')   #reshapes the data into a 2d array
         #image_file.close()
-
-        print "Got an image."
-
-    except PyCapture2.Fc2error as fc2Err:
-        print "Error retrieving buffer : ", fc2Err
-        # Pauses to allow the camera to acquire an image
-        time.sleep(timeToSleep/1000)
-
-
+        #print "Got an image."
+        data=np.array(image.getData())
+        reshapeddata=np.reshape(data,(nrows,ncols))
+        orienteddata=np.flip(reshapeddata.transpose(1,0),1)
+        #print np.shape(reshapeddata)
+        img.setImage(orienteddata)
+        [COM_X,COM_Y]=scipy.ndimage.measurements.center_of_mass(orienteddata)
+        text.setHtml("<font size=4>From {} <br /> "
+                         "Latency: {} ms, refresh time : {} ms <br/>"
+                         "Center of Mass X:{:.2f}, Y:{:.2f}".format(str(cameraSerial), int(latency), int(interval), float(COM_X),float(COM_Y)))
+        QtCore.QTimer.singleShot(interval, updateData)
+    except:
+        print "error"
 ## Disables the 3.3V, 120mA output on GPIO pin 3 (red jacketed lead)
 #voltage_mode = 0x0000000
 #c.writeRegister(output_voltage, voltage_mode)
 
 # Turns off hardware triggering
-c.setTriggerMode(onOff = False)
-print "Finished grabbing images!"
+#c.setTriggerMode(onOff = False)
+#print "Finished grabbing images!"
 
 #Disconnects the camera
-c.stopCapture()
-c.disconnect()
+#c.stopCapture()
+#c.disconnect()
 
-print "Done!"
+#print "Done!"
+updateData()
+## Start Qt event loop unless running in interactive mode.
+if __name__ == '__main__':
+    import sys
+    if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
+        QtGui.QApplication.instance().exec_()

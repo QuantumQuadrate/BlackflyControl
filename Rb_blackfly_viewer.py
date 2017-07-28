@@ -221,7 +221,7 @@ c.setConfiguration(grabTimeout = timeToWait)
 c.startCapture()
 
 imageNum = 0
-interval=45 # ms
+interval=50 # ms
 def updateData():
     try:
         starttime=time.time()
@@ -255,6 +255,7 @@ def updateData():
         QtCore.QTimer.singleShot(interval, updateData)
     except:
         print "error"
+        QtCore.QTimer.singleShot(interval, updateData)
 ## Disables the 3.3V, 120mA output on GPIO pin 3 (red jacketed lead)
 #voltage_mode = 0x0000000
 #c.writeRegister(output_voltage, voltage_mode)

@@ -1,4 +1,4 @@
-"""blackfly_threaded.py
+"""BlackflyCamera.py
    Part of the future AQuA Cesium Controller software package
 
    author = Garrett Hickman
@@ -25,31 +25,35 @@ import PyCapture2   #Python wrapper for BlackFly camera control software, needed
 import numpy
 
 
-
-class BlackflyCamera(Instrument):
-
-    parameters = {'serial':16483677, 'triggerDelay':0, 'exposureTime':1}
-
+class BlackflyCamera(object):
 
     def __init__(self, parameters):
-        self.data = []    # initializes the 'data' varable for holding image data
-        self.data.append(numpy.zeros(self.cam_resolution, dtype = float))    # creates an array to hold camera data for one image
+        # initializes the 'data' varable for holding image data
+        self.data = []
+        # creates an array to hold camera data for one image
+        # self.data.append(numpy.zeros(self.cam_resolution, dtype=float))
 
-        self.serial = parameters.serial
-        self.triggerDelay = parameters.triggerDelay
-        self.exposureTime = parameters.exposureTime
+        # default parameters
+        self.parameters = {
+            'serial': 16483677,
+            'triggerDelay': 0,
+            'exposureTime': 1
+        }
+
+        for key in parameters:
+            self.parameters[key] = parameters[key]
 
         # self.serial = 16483677  # for testing
         # self.serial = 16483678  # for testing
-
 
     def __del__(self):
         # if self.isInitialized:
         self.powerDown()
 
-    # "initialize()" powers on the camera, configures it for hardware triggering, and
-    # starts the camera's image capture process.
-    def initialize(self):   # called only once, before calling "update" for the first time
+    # "initialize()" powers on the camera, configures it for hardware
+    # triggering, and starts the camera's image capture process.
+    def initialize(self):
+        # called only once, before calling "update" for the first time
 
         # logger.info('Blackfly camera {} is being initialized'.format(self.serial))
 
@@ -58,7 +62,7 @@ class BlackflyCamera(Instrument):
         self.camera_instance = PyCapture2.Camera()
 
         # connects the software camera object to a physical camera
-        self.camera_instance.connect(self.bus.getCameraFromSerialNumber(self.serial))
+        self.camera_instance.connect(self.bus.getCameraFromSerialNumber(self.parameters['serial']))
 
         # Powers on the Camera
         cameraPower = 0x610
@@ -113,17 +117,17 @@ class BlackflyCamera(Instrument):
 
         self.isInitialized = True
 
-
-    def update(self, parameters):   # sends parameters that have been updated in software to the cameras, if camera is "enabled"
-        self.serial = parameters.serial
-        self.triggerDelay = parameters.triggerDelay
-        self.exposureTime = parameters.exposureTime
-
+    def update(self, parameters={}):
+        # sends parameters that have been updated in software to the cameras,
+        # if camera is "enabled"
+        for key in parameters:
+            self.parameters[key] = parameters[key]
         self.SetTriggerDelay()
         self.SetExposureTime()
 
     # Sets the delay between external trigger and frame acquisition
-    def SetTriggerDelay(self):    # takes the software-defined trig delay time and writes to hardware
+    def SetTriggerDelay(self):
+        # takes the software-defined trig delay time and writes to hardware
         trigger_delay_obj = self.camera_instance.getTriggerDelay()
         trigger_delay_obj.absControl = True
         trigger_delay_obj.onOff = True
@@ -133,7 +137,9 @@ class BlackflyCamera(Instrument):
         #     #defines the trigger delay, in units of 40.69 ns (referenced to a 24.576 MHz internal clock)
         #     #range of this field is 0-4095. It's preferred to use the absValue variable.
         #     #trigger_delay.valueB = 0     #I don't know what this value does
-        trigger_delay_obj.absValue = self.triggerDelay   #this field is used when the "absControl" field is set to "True"
+
+        # this field is used when the "absControl" field is set to "True"
+        trigger_delay_obj.absValue = self.parameters['triggerDelay']
             #units are seconds. It is preferred to use this variable rather than valueA.
         self.camera_instance.setTriggerDelay(trigger_delay_obj)
         return
@@ -154,7 +160,9 @@ class BlackflyCamera(Instrument):
             # bits [20-31]: shutter exposure time, in (units of ~19 microseconds).
         bits0_7 = '10000010'
         bits8_19 = '000000000000'
-        shutter_value = self.exposureTime   #specifies the shutter exposure time
+
+        # specifies the shutter exposure time
+        shutter_value = self.parameters['exposureTime']
             #in units of approximately 19 microseconds, up to a value of 1000.
             #After a value of roughly 1,000 the behavior is nonlinear.
             #The maximum value is 4095.
@@ -167,44 +175,23 @@ class BlackflyCamera(Instrument):
 
     # Gets one image from the camera
     def GetImage(self):
-
         # Attempts to read an image from the camera buffer
         try:
             image = self.camera_instance.retrieveBuffer()
         except PyCapture2.Fc2error as fc2Err:
-            # logger.error('Error {} when retrieving buffer from camera {}: '.format(fc2Err, cam_index))
+            return (1, "Error")
 
         # Saves the data in the 'image' to the 'self.data' variable
         raw_image_data = PyCapture2.Image.getData(image)  # retrieves raw image data from the camera buffer
         self.nrows = PyCapture2.Image.getRows(image)  # finds the number of rows in the image data
         self.ncols = PyCapture2.Image.getDataSize(image) / self.nrows  # finds the number of columns in the image data
         self.data[:] = numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C')  # reshapes the data into a 2d array
-        return self.data[:]
+        return (0, self.data[0])
 
     def WaitForAcquisition(self):
         # Pauses program for 'pausetime' seconds, to allow the camera to acquire an image
         pausetime = 0.025
         time.sleep(pausetime)
-
-    # Writes the results
-    def writeResults(self, hdf5):
-
-        # logger.info('Blackfly cameras are writing results')
-        # logger.debug("Writing results from Blackfly to Blackfly_{}".format(self.serial))
-
-        # writes the data in the self.data variable to the experiment hdf5 file
-        if self.enable:
-            try:
-                hdf5['Blackfly_{}/columns'.format(self.serial)] = self.ncols
-                hdf5['Blackfly_{}/rows'.format(self.serial)] = self.nrows
-                hdf5['Blackfly_{}/numShots'.format(self.serial)] = 1    # doing only 1 shot per itteration, for now
-                array = numpy.array(self.data, dtype=numpy.int32)
-                array.resize(int(self.subimage_size[1]), int(self.subimage_size[0]))
-                hdf5['Blackfly_{}/shots/1'.format(self.serial,i)] = array # Defines the name of hdf5 node in which to write the results.
-            except Exception as e:
-                # logger.exception('in Blackfly.writeResults')
-                raise PauseError
-
 
     # Powers down the camera
     def powerDown(self):

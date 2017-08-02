@@ -12,7 +12,6 @@
    """
 
 import zmq
-import json
 import logging
 import PyCapture2
 from BlackflyCamera import BlackflyCamera
@@ -51,7 +50,7 @@ class BlackflyServer(object):
 
     def add_camera(self, msg):
         serial = msg['serial']
-
+        status = 1
         camera_info = None
         for c in self.available_cameras:
             if serial == c.serialNumber:
@@ -60,7 +59,6 @@ class BlackflyServer(object):
 
         if camera_info is None:
             resp = "Camera: `{}` is not in list of available cameras."
-            status = 1
             logger = self.logger.error
 
         if not (camera_info is None) and not (serial in self.cameras):
@@ -76,7 +74,6 @@ class BlackflyServer(object):
                 self.cameras[serial].update()
             except:
                 resp = "Problem initializing camera: `{}`"
-                status = 1
                 logger = self.logger.exception
             else:
                 resp = "Camera: `{}` has been initialized."
@@ -84,15 +81,14 @@ class BlackflyServer(object):
                 logger = self.logger.info
         else:
             resp = "Camera: `{}` is already initialized."
-            status = 1
             logger = self.logger.warning
 
         logger(resp)
-        self.socket.send(json.dumps({
+        self.socket.send_json({
             'cameras': [camera_info.__dict__],
             'status': status,
             'message': resp.format(serial)
-        }))
+        })
 
     def get_cameras(self):
         """Get all attached blackfly cameras.
@@ -110,13 +106,32 @@ class BlackflyServer(object):
 
     def get_available_cameras(self, msg):
         """Respond to a request for information on available cameras."""
-        self.socket.send(json.dumps({
+        self.logger.debug('available cameras requested')
+        self.socket.send_json({
             'cameras': [c.__dict__ for c in self.available_cameras],
             'status': 0,
             'message': 'success'
-        }))
+        })
+
+    def get_results(self, msg):
+        """Iterate through cameras and return images and processed data.
+
+        For now just fetch the image data.
+        """
+        results = {}
+        for c in self.cameras:
+            msg = 'Fetching information from Camera: `{}`'.format(c)
+            self.logger.info(msg)
+            err, data = self.cameras[c].GetImage()
+            results[c] = {'error': err, 'raw_data': data.tolist()}
+        self.socket.send_json({
+            'camera_data': results,
+            'status': 0,
+            'message': 'success'
+        })
 
     def get_image(self, msg):
+        """Retrieve a single image from a camera by serial number."""
         serial = msg['serial']
         err, data = self.cameras[serial].GetImage()
         if err:
@@ -124,20 +139,19 @@ class BlackflyServer(object):
         else:
             self.logger.info('all good')
             self.logger.info(type(data))
-        self.socket.send(json.dumps({
+        self.socket.send_json({
             'image': data.tolist(),
             'status': 0,
             'message': 'success'
-        }))
-
+        })
 
     def loop(self):
         """Run the server loop continuously."""
         should_continue = True
-        err_msg = "Exception encountered closing server."
+        err_msg = "Unexpected exception encountered closing server."
         while should_continue:
             try:
-                msg = self.socket.recv()
+                msg = self.socket.recv_json()
                 self.logger.info(msg)
                 self.parse_msg(msg)
             except zmq.ZMQError as e:
@@ -155,26 +169,79 @@ class BlackflyServer(object):
     def parse_msg(self, msg):
         """Parse and act on a request from a client."""
         try:
-            parsed_msg = json.loads(msg)
-            action = parsed_msg['action']
+            action = msg['action']
         except:
             resp = "Unable to parse message from client: {}."
             self.logger.exception(resp.format(msg))
-
         self.logger.debug('recieved `{}` cmd'.format(action))
 
+        # register an error as the fall through
+        valid = False
+        # echo for heartbeat connection verification
+        if action == 'ECHO':
+            valid = True
+            msg['status'] = 0
+            self.socket.send_json(msg)
         # requesting a list of info for available cameras
         if action == 'GET_CAMERAS':
-            self.get_available_cameras(parsed_msg)
+            valid = True
+            self.get_available_cameras(msg)
+        # requesting a list of info for available cameras
+        if action == 'GET_RESULTS':
+            valid = True
+            self.get_results(msg)
         # Initialize and update camera by serial number
         if action == 'ADD_CAMERA':
-            self.add_camera(parsed_msg)
+            valid = True
+            self.add_camera(msg)
+        # Remove camera from list of active cameras by serial number
+        if action == 'REMOVE_CAMERA':
+            valid = True
+            self.remove_camera(msg)
+        # update settings on listed cameras
+        if action == 'UPDATE':
+            valid = True
+            self.update(msg)
         # update setting on camera by serial number
         if action == 'UPDATE_CAMERA':
-            self.update_camera(parsed_msg)
+            valid = True
+            self.update_camera(msg)
         # retrieve an image from the camera buffer
         if action == 'GET_IMAGE':
-            self.get_image(parsed_msg)
+            valid = True
+            self.get_image(msg)
+        # software trigger to wait for next hardware trigger
+        if action == 'START':
+            valid = True
+            self.start(msg)
+
+        if not valid:
+            # return the command with bad status and message
+            msg['status'] = 1
+            error_msg = 'Unrecognized action requested: `{}`'
+            msg['message'] = error_msg.format(msg['action'])
+            self.socket.send_json(msg)
+
+    def remove_camera(self, msg):
+        """Remove a camera by serial number from the list of active cameras."""
+        serial = msg['serial']
+        error = 1
+        if serial not in self.cameras:
+            resp = "Camera: `{}` is not in list of active cameras."
+            logger = self.logger.error
+
+        if not error:
+            del self.cameras[serial]
+            logger = self.logger.info
+            resp = "Camera: `{}` successfully deactivated."
+            error = 0
+
+        logger(resp)
+        self.socket.send_json({
+            'cameras': [c.__dict__ for c in self.available_cameras],
+            'status': error,
+            'message': resp.format(serial)
+        })
 
     def setup_server(self):
         """Initialize the server port and begin listening for instructions."""
@@ -189,6 +256,7 @@ class BlackflyServer(object):
         self.socket.bind(addr)
 
     def setup_logger(self):
+        """Initialize a logger for the server."""
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.DEBUG)
         ch = logging.StreamHandler()
@@ -204,6 +272,22 @@ class BlackflyServer(object):
         """Close the server down."""
         self.socket.close()
         self.context.term()
+
+    def start(self, msg):
+        """Set all active cameras to wait for next hardware trigger."""
+        try:
+            for c in self.cameras:
+                c.start_capture()
+            status = 0
+            resp = "Acquisition successfully started."
+        except:
+            status = 1
+            resp = "Error encountered during acqusition."
+        self.socket.send_json({
+            'status': status,
+            'message': resp
+        })
+
 
     def update_camera(self, msg):
         serial = msg['serial']
@@ -243,11 +327,26 @@ class BlackflyServer(object):
             logger = self.logger.warning
 
         logger(resp)
-        self.socket.send(json.dumps({
+        self.socket.send_json({
             'cameras': [camera_info.__dict__],
             'status': status,
             'message': resp.format(serial)
-        }))
+        })
+
+    def update(self, msg):
+        try:
+            for c in msg['cameras']:
+                serial = msg['cameras'][c]['serial']
+                self.cameras[serial].update(parameters=msg['cameras'][c])
+            status = 0
+            resp = 'Update successful'
+        except KeyError:
+            status = 0
+            resp = 'Server error'
+        self.socket.send_json({
+            'status': status,
+            'message': resp
+        })
 
 if __name__ == "__main__":
     bfs = BlackflyServer()

@@ -106,8 +106,6 @@ class BlackflyCamera(object):
         trigger_mode.source = 0  # specifies an external hardware trigger
         self.camera_instance.setTriggerMode(trigger_mode)
 
-        self.camera_instance.startCapture()    # prepares the cameras to acquire images
-
         # # Sets the camera grab mode:
         # # 0 = The camera retrieves only the newest image from the buffer each time the RetrieveBuffer() function
         # #     is called. Older images will be dropped. See p. 93 in the PyCapture 2 API Reference manual.
@@ -199,3 +197,7 @@ class BlackflyCamera(object):
         powerVal = 0x00000000
         self.camera_instance.writeRegister(cameraPower, powerVal)
         return
+
+    def start_capture(self):
+        """Software trigger to begin capturing an image."""
+        self.camera_instance.startCapture()

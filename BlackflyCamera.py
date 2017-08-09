@@ -25,11 +25,29 @@ import PyCapture2   #Python wrapper for BlackFly camera control software, needed
 import numpy
 
 
+def print_image_info(image):
+    """Print image PyCapture2 image object info.
+
+    startCapture callback function for testing.
+    """
+    # retrieves raw image data from the camera buffer
+    raw_image_data = PyCapture2.Image.getData(image)
+    # finds the number of rows in the image data
+    nrows = PyCapture2.Image.getRows(image)
+    # finds the number of columns in the image data
+    ncols = PyCapture2.Image.getDataSize(image) / nrows
+    # reshapes the data into a 2d array
+    data = numpy.reshape(raw_image_data, (nrows, ncols), 'C')
+    print (0, nrows, ncols, data)
+
+
 class BlackflyCamera(object):
 
     def __init__(self, parameters):
         # initializes the 'data' varable for holding image data
         self.data = []
+        self.error = 0
+        self.status = 'STOPPED'
         # creates an array to hold camera data for one image
         # self.data.append(numpy.zeros(self.cam_resolution, dtype=float))
 
@@ -43,12 +61,11 @@ class BlackflyCamera(object):
         for key in parameters:
             self.parameters[key] = parameters[key]
 
-        # self.serial = 16483677  # for testing
-        # self.serial = 16483678  # for testing
+        self.imageNum = 0
 
     def __del__(self):
         # if self.isInitialized:
-        self.powerDown()
+        self.powerdown()
 
     # "initialize()" powers on the camera, configures it for hardware
     # triggering, and starts the camera's image capture process.
@@ -59,7 +76,7 @@ class BlackflyCamera(object):
 
         # adds an instance of PyCapture2's camera class
         self.bus = PyCapture2.BusManager()
-        self.camera_instance = PyCapture2.Camera()
+        self.camera_instance = PyCapture2.GigECamera()
 
         # connects the software camera object to a physical camera
         self.camera_instance.connect(self.bus.getCameraFromSerialNumber(self.parameters['serial']))
@@ -67,7 +84,10 @@ class BlackflyCamera(object):
         # Powers on the Camera
         cameraPower = 0x610
         powerVal = 0x80000000
-        self.camera_instance.writeRegister(cameraPower, powerVal)
+        try:
+            self.camera_instance.writeRegister(cameraPower, powerVal)
+        except PyCapture2.Fc2error:
+            print "problem"
 
         # Waits for camera to power up
         retries = 10
@@ -120,71 +140,114 @@ class BlackflyCamera(object):
         # if camera is "enabled"
         for key in parameters:
             self.parameters[key] = parameters[key]
-        self.SetTriggerDelay()
-        self.SetExposureTime()
+
+        self.SetTriggerDelay(self.parameters['triggerDelay'])
+        self.SetExposureTime(self.parameters['exposureTime'])
+        self.SetGigEConfig(self.parameters['gigEConfig'])
+        self.SetGigEStreamChannel(self.parameters['gigEStreamChannel'])
+        #print self.camera_instance.getGigEStreamChannelInfo(0).__dict__
+        self.SetGigEImageSettings(self.parameters['gigEImageSettings'])
 
     # Sets the delay between external trigger and frame acquisition
-    def SetTriggerDelay(self):
-        # takes the software-defined trig delay time and writes to hardware
-        trigger_delay_obj = self.camera_instance.getTriggerDelay()
-        trigger_delay_obj.absControl = True
-        trigger_delay_obj.onOff = True
-        trigger_delay_obj.onePush = True
-        trigger_delay_obj.autoManualMode = True
-        # trigger_delay.valueA = 0   #this field is used when the "absControl" field is set to "False"
-        #     #defines the trigger delay, in units of 40.69 ns (referenced to a 24.576 MHz internal clock)
-        #     #range of this field is 0-4095. It's preferred to use the absValue variable.
-        #     #trigger_delay.valueB = 0     #I don't know what this value does
+    def SetTriggerDelay(self, triggerDelay):
+        self.camera_instance.setTriggerDelay(**triggerDelay)
 
-        # this field is used when the "absControl" field is set to "True"
-        trigger_delay_obj.absValue = self.parameters['triggerDelay']
-            #units are seconds. It is preferred to use this variable rather than valueA.
-        self.camera_instance.setTriggerDelay(trigger_delay_obj)
-        return
+    def SetGigEConfig(self, gigEConfig):
+        self.camera_instance.setGigEConfig(**gigEConfig)
+
+    def SetGigEImageSettings(self, gigEImageSettings):
+        self.camera_instance.setGigEImageSettings(**gigEImageSettings)
+        #print self.camera_instance.getGigEImageSettings().__dict__
+
+    def SetGigEStreamChannel(self, gigEStreamChannel):
+        if 'packetSize' in gigEStreamChannel:
+            ptype = PyCapture2.GIGE_PROPERTY_TYPE.GIGE_PACKET_SIZE
+            gigEProp = self.camera_instance.getGigEProperty(ptype)
+            gigEProp.value = gigEStreamChannel['packetSize']
+            self.camera_instance.setGigEProperty(gigEProp)
+        if 'interPacketDelay' in gigEStreamChannel:
+            ptype = PyCapture2.GIGE_PROPERTY_TYPE.GIGE_PACKET_DELAY
+            gigEProp = self.camera_instance.getGigEProperty(ptype)
+            gigEProp.value = gigEStreamChannel['interPacketDelay']
+            self.camera_instance.setGigEProperty(gigEProp)
 
     # Sets the exposure time
-    def SetExposureTime(self):    # takes the software-defined exposure time and writes it to hardware
+    def SetExposureTime(self, exposureTime):
+        """Writes the software-defined exposure time to hardware"""
         shutter_address = 0x81C
-            # "shutter" variable format:
-            # bit [0]: indicates presence of this feature. 0 = not available, 1 = available
-            # bit [1]: absolute value control. 0 = control with the "Value" field
-            #                                  1 = control with the Absolute value register
-            # bits [2-4]: reserved
-            # bit [5]: one push auto mode. read: 0 = not in operation, 1 = in operation
-            #                              write: 1 = begin to work (self-cleared after operation)
-            # bit [6]: turns this feature on or off. 0 = off, 1 = on.
-            # bit [7]: auto/manual mode. 0 = manual, 1 - automatic
-            # bits [8-19]: high value. (not sure what this does)
-            # bits [20-31]: shutter exposure time, in (units of ~19 microseconds).
+        # "shutter" variable format:
+        # bit [0]: indicates presence of this feature. 0 = not available, 1 = available
+        # bit [1]: absolute value control. 0 = control with the "Value" field
+        #                                  1 = control with the Absolute value register
+        # bits [2-4]: reserved
+        # bit [5]: one push auto mode. read: 0 = not in operation, 1 = in operation
+        #                              write: 1 = begin to work (self-cleared after operation)
+        # bit [6]: turns this feature on or off. 0 = off, 1 = on.
+        # bit [7]: auto/manual mode. 0 = manual, 1 - automatic
+        # bits [8-19]: high value. (not sure what this does)
+        # bits [20-31]: shutter exposure time, in (units of ~19 microseconds).
         bits0_7 = '10000010'
         bits8_19 = '000000000000'
 
         # specifies the shutter exposure time
-        shutter_value = self.parameters['exposureTime']
-            #in units of approximately 19 microseconds, up to a value of 1000.
-            #After a value of roughly 1,000 the behavior is nonlinear.
-            #The maximum value is 4095.
-            #For values between 5 and 1000, shutter time is very well approximated by: t = (shutter_value*18.81 - 22.08) us
-        bits20_31 = format(shutter_value,'012b')
+        # in units of approximately 19 microseconds, up to a value of 1000.
+        # After a value of roughly 1,000 the behavior is nonlinear.
+        # The maximum value is 4095.
+        # For values between 5 and 1000, shutter time is very well approximated
+        # by: t = (shutter_value*18.81 - 22.08) us
+        shutter_value = int(round((exposureTime*1000+22.08)/18.81))
+        if shutter_value > 4095:
+            shutter_value = 4095
+        bits20_31 = format(shutter_value, '012b')
+        print exposureTime
+        print shutter_value
+        print bits20_31
         shutter_bin = bits0_7 + bits8_19 + bits20_31
-        shutter = int(shutter_bin, 2)   #converts the binary value to base-10 integer
-        self.camera_instance.writeRegister(shutter_address, shutter)    #writes to the camera
-        return
+        # converts the binary value to base-10 integer
+        shutter = int(shutter_bin, 2)
+        # writes to the camera
+        self.camera_instance.writeRegister(shutter_address, shutter)
 
     # Gets one image from the camera
     def GetImage(self):
         # Attempts to read an image from the camera buffer
+        self.error = 1
         try:
             image = self.camera_instance.retrieveBuffer()
+            image.save("D:/test_imgs/MOT_image_{}.png".format(self.imageNum), 6)
         except PyCapture2.Fc2error as fc2Err:
-            return (1, "Error")
+            print fc2Err
+            return (1, "Error", {})
 
-        # Saves the data in the 'image' to the 'self.data' variable
-        raw_image_data = PyCapture2.Image.getData(image)  # retrieves raw image data from the camera buffer
-        self.nrows = PyCapture2.Image.getRows(image)  # finds the number of rows in the image data
-        self.ncols = PyCapture2.Image.getDataSize(image) / self.nrows  # finds the number of columns in the image data
-        self.data[:] = numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C')  # reshapes the data into a 2d array
-        return (0, self.data[0])
+        # retrieves raw image data from the camera buffer
+        raw_image_data = PyCapture2.Image.getData(image)
+        # finds the number of rows in the image data
+        self.nrows = PyCapture2.Image.getRows(image)
+        # finds the number of columns in the image data
+        self.ncols = PyCapture2.Image.getDataSize(image) / self.nrows
+        ncols = PyCapture2.Image.getCols(image)
+        if self.ncols != ncols:
+            print "image settings and image shape do not agree"
+        self.calculate_statistics(raw_image_data)
+        # reshapes the data into a 2d array
+        self.data = numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C')
+        self.error = 0
+        self.imageNum += 1
+        return (self.error, self.data, self.stats)
+
+    def calculate_statistics(self, data):
+        self.stats = {}
+        self.stats['mean'] = numpy.mean(data)
+
+    def get_data(self):
+        data = self.data
+        error = self.error
+        stats = self.stats
+        # clear data and error
+        self.data = []
+        self.error = 0
+        self.stats = {}
+        return (error, data, stats)
 
     def WaitForAcquisition(self):
         # Pauses program for 'pausetime' seconds, to allow the camera to acquire an image
@@ -192,7 +255,7 @@ class BlackflyCamera(object):
         time.sleep(pausetime)
 
     # Powers down the camera
-    def powerDown(self):
+    def powerdown(self):
         cameraPower = 0x610
         powerVal = 0x00000000
         self.camera_instance.writeRegister(cameraPower, powerVal)
@@ -200,4 +263,22 @@ class BlackflyCamera(object):
 
     def start_capture(self):
         """Software trigger to begin capturing an image."""
+        # callback function causes server to crash
+        # self.camera_instance.startCapture(print_image_info)
         self.camera_instance.startCapture()
+        self.status = 'ACQUIRING'
+
+    def stop_capture(self):
+        """Software trigger to stop capturing an image."""
+        self.camera_instance.stopCapture()
+        self.status = 'STOPPED'
+
+    def shutdown(self):
+        try:
+            self.camera_instance.stopCapture()
+        except:
+            print "exception"
+        try:
+            self.camera_instance.disconnect()
+        except:
+            print "exception 2"

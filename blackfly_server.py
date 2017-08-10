@@ -103,7 +103,7 @@ class BlackflyServer(object):
                 err, data, stats = self.cameras[serial].GetImage()
                 if err == 0:
                     # TODO: multi shot experiments
-                    self.logger.info('Recieved {} image.'.format(data.shape))
+                    self.logger.info('Recieved {} image.'.format(len(data)))
                 else:
                     self.logger.error('An error occurred getting an image.')
                 self.cameras[serial].stop_capture()
@@ -147,7 +147,7 @@ class BlackflyServer(object):
             try:
                 results[c] = {
                     'error': err,
-                    'raw_data': data.tolist(),
+                    'raw_data': data,
                     'stats': stats
                 }
             except AttributeError:

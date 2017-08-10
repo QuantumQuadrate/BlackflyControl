@@ -53,7 +53,7 @@ class BlackflyCamera(object):
 
         # default parameters
         self.parameters = {
-            'serial': 16483677,
+            'serial': 16483677, # should this be hardcoded? MK
             'triggerDelay': 0,
             'exposureTime': 1
         }
@@ -212,25 +212,35 @@ class BlackflyCamera(object):
     def GetImage(self):
         # Attempts to read an image from the camera buffer
         self.error = 1
+        self.data = []
         try:
-            image = self.camera_instance.retrieveBuffer()
-            image.save("D:/test_imgs/MOT_image_{}.png".format(self.imageNum), 6)
-        except PyCapture2.Fc2error as fc2Err:
-            print fc2Err
-            return (1, "Error", {})
+            shots = self.parameters['shotsPerMeasurement']
+        except KeyError:
+            shots = 1
+        for shot in range(shots):
+            try:
+                image = self.camera_instance.retrieveBuffer()
+                print "get image!!!"
+                #image.save("D:/test_imgs/MOT_image_{}_{}.png".format(
+                #    self.imageNum,
+                #    shot),
+                #6) # code for PNG
+            except PyCapture2.Fc2error as fc2Err:
+                print fc2Err
+                return (1, "Error", {})
 
-        # retrieves raw image data from the camera buffer
-        raw_image_data = PyCapture2.Image.getData(image)
-        # finds the number of rows in the image data
-        self.nrows = PyCapture2.Image.getRows(image)
-        # finds the number of columns in the image data
-        self.ncols = PyCapture2.Image.getDataSize(image) / self.nrows
-        ncols = PyCapture2.Image.getCols(image)
-        if self.ncols != ncols:
-            print "image settings and image shape do not agree"
-        self.calculate_statistics(raw_image_data)
-        # reshapes the data into a 2d array
-        self.data = numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C')
+            # retrieves raw image data from the camera buffer
+            raw_image_data = PyCapture2.Image.getData(image)
+            # finds the number of rows in the image data
+            self.nrows = PyCapture2.Image.getRows(image)
+            # finds the number of columns in the image data
+            self.ncols = PyCapture2.Image.getDataSize(image) / self.nrows
+            ncols = PyCapture2.Image.getCols(image)
+            if self.ncols != ncols:
+                print "image settings and image shape do not agree"
+            self.calculate_statistics(raw_image_data)
+            # reshapes the data into a 2d array
+            self.data.append(numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C').tolist())
         self.error = 0
         self.imageNum += 1
         return (self.error, self.data, self.stats)

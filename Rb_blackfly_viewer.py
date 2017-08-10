@@ -114,7 +114,7 @@ print 'configuring trigger mode'
 trigger_mode = c.getTriggerMode()
 trigger_mode.onOff = True
 trigger_mode.mode = 0
-trigger_mode.polarity = 1
+trigger_mode.polarity = 0 # falling edge
 trigger_mode.source = 0		# Using an external hardware trigger
 c.setTriggerMode(trigger_mode)
 
@@ -221,7 +221,8 @@ c.setConfiguration(grabTimeout = timeToWait)
 c.startCapture()
 
 imageNum = 0
-interval=50 # ms
+interval=5 # ms
+percentile=99.5
 def updateData():
     try:
         starttime=time.time()
@@ -229,6 +230,8 @@ def updateData():
         latency=int(1000 * (time.time() - starttime))
     except PyCapture2.Fc2error as fc2Err:
         print "Error retrieving buffer : ", fc2Err
+        #text.setHtml("<font size=4>From {} <br /> "
+                         #"Error retrieving buffer: {}".format(str(cameraSerial),str(fc2Err)))
         #image.save("test_images/MOT_image_{}.png".format(imageNum), 6) #if the directory does not exist, it will output an general failure error
         #imageNum += 1
         #the '6' indicates .png file format, see p. 99 of the PyCapture 2 manual for more info
@@ -237,24 +240,18 @@ def updateData():
     try:
         nrows = PyCapture2.Image.getRows(image)   #finds the number of rows in the image data
         ncols = PyCapture2.Image.getDataSize(image)/nrows   #finds the number of columns in the image data
-        #print 'image size:{} x {}'.format(nrows, ncols)
-        #image_file = h5py.File("image_file.hdf5", "w")
-        #image_data = image_file.create_dataset("image_dataset", (nrows, ncols), dtype='i')
-        #image_data[:] = np.reshape(raw_image_data, (nrows, ncols), 'C')   #reshapes the data into a 2d array
-        #image_file.close()
-        #print "Got an image."
         data=np.array(image.getData())
         reshapeddata=np.reshape(data,(nrows,ncols))
         orienteddata=np.flip(reshapeddata.transpose(1,0),1)
-        #print np.shape(reshapeddata)
         img.setImage(orienteddata)
         [COM_X,COM_Y]=scipy.ndimage.measurements.center_of_mass(orienteddata)
         text.setHtml("<font size=4>From {} <br /> "
                          "Latency: {} ms, refresh time : {} ms <br/>"
-                         "Center of Mass X:{:.2f}, Y:{:.2f}".format(str(cameraSerial), int(latency), int(interval), float(COM_X),float(COM_Y)))
+                         "Center of Mass X:{:.2f}, Y:{:.2f} <br/>"
+                         "{}th percentile: {}".format(str(cameraSerial), int(latency), int(interval), float(COM_X),float(COM_Y),float(percentile),int(np.percentile(orienteddata,percentile))))
         QtCore.QTimer.singleShot(interval, updateData)
     except:
-        print "error"
+        text.setHtml("<font size=4> No image to draw or could not retrive image from the camera")
         QtCore.QTimer.singleShot(interval, updateData)
 ## Disables the 3.3V, 120mA output on GPIO pin 3 (red jacketed lead)
 #voltage_mode = 0x0000000

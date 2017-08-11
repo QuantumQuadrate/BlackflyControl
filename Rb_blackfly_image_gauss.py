@@ -23,9 +23,9 @@ def five_gaussians(arr, a1, mu1, sigma1, a2, mu2, sigma2, a3, mu3, sigma3, a4, m
         gaussian(arr, a4, mu4, sigma4, b=0) +
         gaussian(arr, a5, mu5, sigma5, b=0) + b)
 
-#fits a single laser beam to a gaussian
-#returns the location of the center  (in micrometers) in a dictionary
+def gnd_gauss(arr):
     #fitting the ground image to a gaussian:
+    x, y = arr.shape
     yArray = np.zeros(x)
     xArray = np.zeros(y)
     #sum of each column into rows:
@@ -50,9 +50,8 @@ def five_gaussians(arr, a1, mu1, sigma1, a2, mu2, sigma2, a3, mu3, sigma3, a4, m
     pos = {'x': poptx[1], 'y': popty[1]}
     return pos
 
-#fits the five fort spots to a five peaked gaussian
-#returns the location of the center beam (in micrometers) in a dictionary
-def fort_gauss(arr,x,y):
+def fort_gauss(arr):
+    x, y = arr.shape
     yArray = np.zeros(x)
     xArray = np.zeros(y)
     for i in range(0, x):
@@ -68,9 +67,12 @@ def fort_gauss(arr,x,y):
     maxPos = np.argmax(yArray)
     maxInt = np.amax(yArray)
     guessy = np.array([maxInt, maxPos, 30, 0])
-    print(guessx)
     #fitting the projections
     popty, pcovy = curve_fit(gaussian, yAxis, yArray, guessy)
     poptx, pcovx = curve_fit(five_gaussians, xAxis, xArray, guessx)
-    pos = {'x': poptx[7]*um, 'y': popty[1]*um}
+    px = five_gaussians(xAxis, *poptx)
+    plt.plot(xAxis, xArray)
+    plt.show()
+    pos = {'x': poptx[7], 'y': popty[1]}
     return pos
+

@@ -220,7 +220,7 @@ class BlackflyCamera(object):
         for shot in range(shots):
             try:
                 image = self.camera_instance.retrieveBuffer()
-                print "get image!!!"
+                #print "get image!!!"
                 #image.save("D:/test_imgs/MOT_image_{}_{}.png".format(
                 #    self.imageNum,
                 #    shot),
@@ -236,8 +236,9 @@ class BlackflyCamera(object):
             # finds the number of columns in the image data
             self.ncols = PyCapture2.Image.getDataSize(image) / self.nrows
             ncols = PyCapture2.Image.getCols(image)
-            if self.ncols != ncols:
-                print "image settings and image shape do not agree"
+            #actualdatasize=PyCapture2.Image.getRecievedDataSize(image)
+            #if self.ncols != ncols:
+            #    print "Image settings and image shape do not agree. getCols:{}, getRows:{}".format(ncols,nrows)
             self.calculate_statistics(raw_image_data)
             # reshapes the data into a 2d array
             self.data.append(numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C').tolist())

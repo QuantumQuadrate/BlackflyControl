@@ -63,7 +63,7 @@ text2.setAnchor((-1,7))
 cameraSerial = 15102504# Rubidium's Pointgrey
 
 triggDelay = 0      # trigger delay in ms
-exposureTime = 5    # exposure time in ms
+exposureTime = 2    # exposure time in ms
 
 timeToSleep = 1000   # time that the computer sleeps between image acquisitions, in ms
 timeToWait = 1000   # time the camera waits for a new trigger before throwing an error, in ms
@@ -90,12 +90,12 @@ c.writeRegister(cameraPower, powerVal)
 
 # Waits for camera to power up
 retries = 10
-timeToSleep = 0.1	#seconds
+timeToSleep = 0.1    #seconds
 for i in range(retries):
     time.sleep(timeToSleep)
     try:
         regVal = c.readRegister(cameraPower)
-    except PyCapture2.Fc2error:	# Camera might not respond to register reads during powerup.
+    except PyCapture2.Fc2error:    # Camera might not respond to register reads during powerup.
         pass
     awake = True
     if regVal == powerVal:
@@ -113,9 +113,9 @@ c.setGigEConfig(enablePacketResend = True, registerTimeoutRetries = 3)
 print 'configuring trigger mode'
 trigger_mode = c.getTriggerMode()
 trigger_mode.onOff = True
-trigger_mode.mode = 0
+trigger_mode.mode = 1
 trigger_mode.polarity = 0 # falling edge
-trigger_mode.source = 0		# Using an external hardware trigger
+trigger_mode.source = 0        # Using an external hardware trigger
 c.setTriggerMode(trigger_mode)
 
 # Sets the trigger delay
@@ -159,7 +159,8 @@ shutter_bin = bits0_7 + bits8_19 + bits20_31
 shutter = int(shutter_bin, 2)
 c.writeRegister(shutter_address, shutter)
 
-
+settings= {"offsetX": 0, "offsetY": 0, "width": 1280, "height":960, "pixelFormat": PyCapture2.PIXEL_FORMAT.MONO8}
+c.setGigEImageSettings(**settings)
 # Instructs the camera to retrieve only the newest image from the buffer each time the RetrieveBuffer() function is called.
 # Older images will be dropped.
 PyCapture2.GRAB_MODE = 0
@@ -240,6 +241,7 @@ def updateData():
     try:
         nrows = PyCapture2.Image.getRows(image)   #finds the number of rows in the image data
         ncols = PyCapture2.Image.getDataSize(image)/nrows   #finds the number of columns in the image data
+        #ncols = PyCapture2.Image.getCols(image)  #finds the number of columns in the image data
         data=np.array(image.getData())
         reshapeddata=np.reshape(data,(nrows,ncols))
         orienteddata=np.flip(reshapeddata.transpose(1,0),1)

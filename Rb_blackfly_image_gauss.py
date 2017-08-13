@@ -71,8 +71,7 @@ def fort_gauss(arr):
     popty, pcovy = curve_fit(gaussian, yAxis, yArray, guessy)
     poptx, pcovx = curve_fit(five_gaussians, xAxis, xArray, guessx)
     px = five_gaussians(xAxis, *poptx)
-    plt.plot(xAxis, xArray)
-    plt.show()
+    #plt.plot(xAxis, xArray) #suppresed plotting
+    #plt.show()
     pos = {'x': poptx[7], 'y': popty[1]}
     return pos
-

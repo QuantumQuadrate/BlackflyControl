@@ -20,6 +20,9 @@
 # SUFFERED BY LICENSEE AS A RESULT OF USING, MODIFYING OR DISTRIBUTING
 # THIS SOFTWARE OR ITS DERIVATIVES..
 #=============================================================================
+# For fitting
+import Rb_blackfly_image_gauss as fits
+
 # For plotting
 from pyqtgraph.Qt import QtCore, QtGui
 import pyqtgraph as pg
@@ -49,9 +52,12 @@ view = win.addViewBox()
 view.setAspectLocked(True) # lock the aspect ratio so pixels are always square
 ## Create image item and textitem
 img = pg.ImageItem()
+scatter=pg.ScatterPlotItem()
+#scatter.setData(size=10,symbol='o',brush=(255,0,0))
 text= pg.TextItem()
 text2= pg.TextItem()
 view.addItem(img)
+view.addItem(scatter)
 view.addItem(text)
 view.addItem(text2)
 text.setAnchor((0,2))
@@ -114,7 +120,7 @@ print 'configuring trigger mode'
 trigger_mode = c.getTriggerMode()
 trigger_mode.onOff = True
 trigger_mode.mode = 1
-trigger_mode.polarity = 0 # falling edge
+trigger_mode.polarity = 1
 trigger_mode.source = 0        # Using an external hardware trigger
 c.setTriggerMode(trigger_mode)
 
@@ -159,61 +165,11 @@ shutter_bin = bits0_7 + bits8_19 + bits20_31
 shutter = int(shutter_bin, 2)
 c.writeRegister(shutter_address, shutter)
 
-settings= {"offsetX": 0, "offsetY": 0, "width": 1280, "height":960, "pixelFormat": PyCapture2.PIXEL_FORMAT.MONO8}
+settings= {"offsetX": 300, "offsetY": 0, "width": 900, "height":500, "pixelFormat": PyCapture2.PIXEL_FORMAT.MONO8}
 c.setGigEImageSettings(**settings)
 # Instructs the camera to retrieve only the newest image from the buffer each time the RetrieveBuffer() function is called.
 # Older images will be dropped.
 PyCapture2.GRAB_MODE = 0
-
-# # Returns the serial number of the Blackfly camera
-#sNumber = PyCapture2.CameraInfo.serialNumber
-
-
-# # Configures the camera strobe using register writes
-# # Calculates the base register address
-# offset = c.readRegister(0x48C)
-# offset = 4*offset    #result is 0xf01300. Remove the 'f' before passing to the camera
-# # Configures camera strobe
-# relative_address = 0x204
-# strobe_address = 0x01504
-
-# # "strobe_mode" variable format:
-# # bit [0] (MSB): presence inquiry. Indicates the presence of the feature. 0 = not available, 1 = available.
-# # bits [1-5]: reserved.
-# # bit [6]: on/off. Turns the function on or off. 0 = OFF, 1 = ON.
-# # bit [7]: signal polarity. 0 = active low output, 1 = active high output.
-# # bits [8-19]: delay. Value indicates the delay after start of exposure until the strobe signal asserts.
-# # bits [20-31]: duration. Value indicates the duration of the strobe signal.
-# #               With a value of '0' the signal de-asserts at the end of exposure.
-# bits0_7 ='10000011'
-# delay_value = 0 #range of this parameter is 0 - 4095
-# bits8_19 = format(delay_value,'012b')  #formats the delay value into binary with leading 0's
-# duration_value = 0 #in microseconds, range of this parameter is 0 - 4095
-#     #if the value given is 0, the strobe pulse lasts as long as the exposure time
-# bits20_31 = format(duration_value,'012b')  #formats the duration value into binary with leading 0's
-# strobe_mode_bin = bits0_7 + bits8_19 + bits20_31
-# strobe_mode = int(strobe_mode_bin,2)   #converts the binary value to base-10 integer
-# c.writeRegister(strobe_address, strobe_mode)
-
-# # Enables the 3.3V, 120mA output on GPIO pin 3 (red jacketed lead)
-# output_voltage = 0x19D0
-# voltage_mode = 0x00000001
-# c.writeRegister(output_voltage, voltage_mode)
-
-# # Configures the camera strobe to activate at start of exposure, rather than activating at receipt of the trigger pulse
-# # See pp. 131-132 of the FLIR Blackfly technical reference v14.0 manual for more info
-# strobe_start_address = 0x1104
-# # "strobe_start" variable format:
-# # bit [0] (MSB): current mode. 0 = strobe start is relative to start of integration
-# #                              1 = strobe start is relative to external trigger
-# # bits [1-12]: reserved
-# # bit [13]: shutter mode (read only). 0 = rolling shutter mode, 1 = global reset mode
-# # bits [14-15]: pixels exposed. 00 = line 1 exposed, 01 = any pixel exposed, 10 = all pixels exposed, 11 = invalid
-# # bits [16-31]: reserved
-# strobe_start_bin = '00000000000000010000000000000000'
-# strobe_start = int(strobe_start_bin, 2)   #converts binary to decimal integer
-# c.writeRegister(strobe_start_address, strobe_start)
-
 
 # Sets how long the camera will wait for its trigger, in ms
 c.setConfiguration(grabTimeout = timeToWait)
@@ -244,12 +200,22 @@ def updateData():
         #ncols = PyCapture2.Image.getCols(image)  #finds the number of columns in the image data
         data=np.array(image.getData())
         reshapeddata=np.reshape(data,(nrows,ncols))
-        orienteddata=np.flip(reshapeddata.transpose(1,0),1)
+        baseline=np.median(data)
+        orienteddata=np.flip(reshapeddata.transpose(1,0),1)-baseline #subtract median baseline
         img.setImage(orienteddata)
-        [COM_X,COM_Y]=scipy.ndimage.measurements.center_of_mass(orienteddata)
+        if int(np.max(orienteddata))>80:
+            #[COM_X,COM_Y]=fits.fort_gauss(orienteddata)['x'],fits.fort_gauss(orienteddata)['y']
+            #[COM_X,COM_Y]=scipy.ndimage.measurements.center_of_mass(orienteddata)
+            [COM_X,COM_Y]=np.unravel_index(np.argmax(orienteddata),orienteddata.shape) # locate maximum arg
+            scatter.setData(pos=[[COM_X,COM_Y]],size=10,symbol='o',brush=(255,0,0))
+            #print np.max(orienteddata)
+        else:
+            #[COM_X,COM_Y]=scipy.ndimage.measurements.center_of_mass(orienteddata)
+            [COM_X,COM_Y]=np.unravel_index(np.argmax(orienteddata),orienteddata.shape)
+            scatter.setData(pos=[[COM_X,COM_Y]],size=10,symbol='o',brush=(0,255,0))
         text.setHtml("<font size=4>From {} <br /> "
                          "Latency: {} ms, refresh time : {} ms <br/>"
-                         "Center of Mass X:{:.2f}, Y:{:.2f} <br/>"
+                         "Center X:{:.2f}, Y:{:.2f} <br/>"
                          "{}th percentile: {}".format(str(cameraSerial), int(latency), int(interval), float(COM_X),float(COM_Y),float(percentile),int(np.percentile(orienteddata,percentile))))
         QtCore.QTimer.singleShot(interval, updateData)
     except:

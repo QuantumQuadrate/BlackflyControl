@@ -1,7 +1,7 @@
 # This standalone Python code writen by Garrett Hickman is based on an example
 # file provided by FLIR. The following copyright statement applies to their
 # software:
-# Modified:2017-07-27 by Minho Kwon
+# Modified:2017-08-16 by Minho Kwon
 #
 # -*- coding: utf-8 -*-
 #=============================================================================
@@ -118,7 +118,7 @@ cameraConfig = c.getGigEConfig()
 c.setGigEConfig(enablePacketResend = True, registerTimeoutRetries = 3)
 
 # Configures trigger mode for hardware triggering
-print 'configuring trigger mode'
+#print 'configuring trigger mode'
 trigger_mode = c.getTriggerMode()
 trigger_mode.onOff = True # True is using external trigger
 trigger_mode.mode = 0 # 0 is standard trigger
@@ -127,7 +127,7 @@ trigger_mode.source = 0        # Using an external hardware trigger
 c.setTriggerMode(trigger_mode)
 
 # Sets the trigger delay
-print 'configuring trigger delay'
+#print 'configuring trigger delay'
 trigger_delay = c.getTriggerDelay()
 trigger_delay.absControl = True
 trigger_delay.onOff = True
@@ -167,7 +167,7 @@ shutter_bin = bits0_7 + bits8_19 + bits20_31
 shutter = int(shutter_bin, 2)
 c.writeRegister(shutter_address, shutter)
 
-settings= {"offsetX": 300, "offsetY": 0, "width": 900, "height":500, "pixelFormat": PyCapture2.PIXEL_FORMAT.MONO8}
+settings= {"offsetX": 300, "offsetY": 100, "width": 900, "height":500, "pixelFormat": PyCapture2.PIXEL_FORMAT.MONO8}
 c.setGigEImageSettings(**settings)
 # Instructs the camera to retrieve only the newest image from the buffer each time the RetrieveBuffer() function is called.
 # Older images will be dropped.
@@ -192,38 +192,31 @@ def updateData():
         data2=np.array(image2.getData())
         nrows = PyCapture2.Image.getRows(image)   #finds the number of rows in the image data
         ncols = PyCapture2.Image.getDataSize(image)/nrows   #finds the number of columns in the image data
-        reshapeddata=np.reshape(data-data2,(nrows,ncols))
-        #baseline=np.median(reshapeddata)
-        orienteddata=np.flip(reshapeddata.transpose(1,0),1)
+        reshapeddata1=np.reshape(data,(nrows,ncols))
+        reshapeddata2=np.reshape(data2,(nrows,ncols))
+        orienteddata1=np.flip(reshapeddata1.transpose(1,0),1)
+        orienteddata2=np.flip(reshapeddata2.transpose(1,0),1)
+        orienteddata=orienteddata1-orienteddata2
         [FORT_COM_X,FORT_COM_Y]=np.unravel_index(np.argmax(orienteddata),orienteddata.shape) # locate maximum arg
         [Ground_COM_X,Ground_COM_Y]=np.unravel_index(np.argmin(orienteddata),orienteddata.shape) # locate maximum arg
-        displayeddata=np.absolute(orienteddata)
+        #displayeddata=np.absolute(orienteddata)
+        displayeddata=np.zeros((ncols,nrows,3))
+        displayeddata[:,:,0]=orienteddata1
+        displayeddata[:,:,1]=orienteddata2
+        displayeddata[:,:,2]=np.absolute(orienteddata1-orienteddata2)
         img.setImage(displayeddata)
         #img.setLevels([0,np.max(displayeddata)])
-        scatter.setData(pos=[[FORT_COM_X,FORT_COM_Y]],size=8,symbol='o',brush=(255,0,0))
-        scatter2.setData(pos=[[Ground_COM_X,Ground_COM_Y]],size=8,symbol='o',brush=(0,255,0))
+        scatter.setData(pos=[[FORT_COM_X,FORT_COM_Y]],size=8,symbol='o',brush=(255,0,120))
+        scatter2.setData(pos=[[Ground_COM_X,Ground_COM_Y]],size=8,symbol='o',brush=(0,255,120))
         text.setHtml("<font size=4>From {} <br /> "
                          "Latency: {} ms, refresh time : {} ms <br/>"
                          "Delta X:{:.2f}, Delta Y:{:.2f} <br/>".format(str(cameraSerial), int(latency), int(interval), float(FORT_COM_X-Ground_COM_X),float(FORT_COM_Y-Ground_COM_Y)))
         QtCore.QTimer.singleShot(interval, updateData)
     except PyCapture2.Fc2error as fc2Err:
-        print "Error retrieving buffer : ", fc2Err
+        #print "Error retrieving buffer : ", fc2Err
         text.setHtml("<font size=4> No image to draw or could not retrive image from the camera")
         QtCore.QTimer.singleShot(interval, updateData)
 
-## Disables the 3.3V, 120mA output on GPIO pin 3 (red jacketed lead)
-#voltage_mode = 0x0000000
-#c.writeRegister(output_voltage, voltage_mode)
-
-# Turns off hardware triggering
-#c.setTriggerMode(onOff = False)
-#print "Finished grabbing images!"
-
-#Disconnects the camera
-#c.stopCapture()
-#c.disconnect()
-
-#print "Done!"
 updateData()
 ## Start Qt event loop unless running in interactive mode.
 if __name__ == '__main__':

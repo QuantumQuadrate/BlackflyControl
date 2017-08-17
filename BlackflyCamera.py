@@ -19,7 +19,7 @@
 __author__ = 'Garrett Hickman'
 # import logging
 # logger = logging.getLogger(__name__)
-from time import sleep    #allows pausing of program execution
+import time
 import PyCapture2   #Python wrapper for BlackFly camera control software, needed for this code to work
 
 import numpy
@@ -101,7 +101,7 @@ class BlackflyCamera(object):
             if regVal == powerVal:
                 break
             awake = False
-            sleep(timeToSleep)
+            time.sleep(timeToSleep)
         if not awake:    # aborts if Python was unable to wake the camera
             # logger.info('Could not wake Blackfly camera. Exiting...')
             exit()
@@ -218,8 +218,10 @@ class BlackflyCamera(object):
         except KeyError:
             shots = 1
         for shot in range(shots):
+            print "Delta t:{} ms. Starting to take shot:{}".format(int(1000*(time.time()-self.start_time)), shot)
             try:
                 image = self.camera_instance.retrieveBuffer()
+                print "Delta t:{} ms. Shot:{} buffer retrieved".format(int(1000*(time.time()-self.start_time)), shot)
                 #print "get image!!!"
                 #image.save("D:/test_imgs/MOT_image_{}_{}.png".format(
                 #    self.imageNum,
@@ -230,20 +232,30 @@ class BlackflyCamera(object):
                 return (1, "Error", {})
 
             # retrieves raw image data from the camera buffer
-            raw_image_data = PyCapture2.Image.getData(image)
+            raw_image_data = numpy.array(image.getData(),dtype=numpy.uint8)
+            #raw_image_data = numpy.array(image.getData())
+            print "Delta t:{} ms. Shot:{} raw_image_data".format(int(1000*(time.time()-self.start_time)), shot)
             # finds the number of rows in the image data
             self.nrows = PyCapture2.Image.getRows(image)
+            print "self.nrows:{}".format(self.nrows)
+            print "Delta t:{} ms. Shot:{} self.nrows".format(int(1000*(time.time()-self.start_time)), shot)
             # finds the number of columns in the image data
             self.ncols = PyCapture2.Image.getDataSize(image) / self.nrows
+            print "self.ncols:{}".format(self.ncols)
+            print "Delta t:{} ms. Shot:{} self.ncols".format(int(1000*(time.time()-self.start_time)), shot)
             ncols = PyCapture2.Image.getCols(image)
+            print "ncols:{}".format(ncols)
+            print "Delta t:{} ms. Shot:{} ncols".format(int(1000*(time.time()-self.start_time)), shot)
             #actualdatasize=PyCapture2.Image.getRecievedDataSize(image)
             #if self.ncols != ncols:
             #    print "Image settings and image shape do not agree. getCols:{}, getRows:{}".format(ncols,nrows)
             self.calculate_statistics(raw_image_data)
+            print "Delta t:{} ms. Shot:{} calculate_statistics".format(int(1000*(time.time()-self.start_time)), shot)
             # reshapes the data into a 2d array
             self.data.append(numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C').tolist())
+            print "Delta t:{} ms. Shot:{} Data append".format(int(1000*(time.time()-self.start_time)), shot)
         self.error = 0
-        self.imageNum += 1
+        #self.imageNum += 1
         return (self.error, self.data, self.stats)
 
     def calculate_statistics(self, data):
@@ -278,6 +290,7 @@ class BlackflyCamera(object):
         # self.camera_instance.startCapture(print_image_info)
         self.camera_instance.startCapture()
         self.status = 'ACQUIRING'
+        self.start_time = time.time()
 
     def stop_capture(self):
         """Software trigger to stop capturing an image."""

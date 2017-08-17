@@ -5,24 +5,28 @@
    created = 2017-06-23
    modified >= 2017-06-23
 
-   This program interfaces with the Blackfly cameras. It can control camera settings and read out images.
+   This program interfaces with the Blackfly cameras. It can control camera
+   settings and read out images.
    The code is based off of "andor.py", written by Martin Lichtman.
 
-   Video mode has not been added yet, but may come later given sufficient popular demand.
+   Video mode has not been added yet, but may come later given sufficient
+   popular demand.
 
-   This code makes use of the PyCapture2 python wrapper for Blackfly cameras, available from the FLIR downloads
-   website at: https://www.ptgrey.com/support/downloads. Version dated 2017-4-24. The PyCapture2 package must
+   This code makes use of the PyCapture2 python wrapper for Blackfly cameras,
+   available from the FLIR downloads website at:
+   https://www.ptgrey.com/support/downloads
+   Version dated 2017-4-24. The PyCapture2 package must
    be installed in order for this program to run.
-
    """
 
 __author__ = 'Garrett Hickman'
 # import logging
 # logger = logging.getLogger(__name__)
 import time
-import PyCapture2   #Python wrapper for BlackFly camera control software, needed for this code to work
+import PyCapture2
 
 import numpy
+import multiprocessing
 
 
 def print_image_info(image):
@@ -39,6 +43,31 @@ def print_image_info(image):
     # reshapes the data into a 2d array
     data = numpy.reshape(raw_image_data, (nrows, ncols), 'C')
     print (0, nrows, ncols, data)
+
+
+def calculate_statistics(data):
+    stats = {}
+    stats['mean'] = numpy.mean(data)
+    return stats
+
+
+def worker(shot, return_dict, image, start_time):
+    print "shot:{} Delta t:{} ms. Starting to take shot:{}".format(shot, int(1000*(time.time()-start_time)), shot)
+    # retrieves raw image data from the camera buffer
+    # TODO: link datatype to image format from settings
+    raw_image_data = numpy.array(image.getData(), dtype=numpy.uint8)
+    print "shot:{} Delta t:{} ms. Shot:{} raw_image_data".format(int(1000*(time.time()-start_time)), shot)
+    # finds the number of rows/cols in the image data
+    nrows = PyCapture2.Image.getRows(image)
+    ncols = PyCapture2.Image.getCols(image)
+    print "nrows:{}".format(nrows)
+    print "ncols:{}".format(ncols)
+    print "shot:{} Delta t:{} ms. Shot:{} ncols".format(int(1000*(time.time()-start_time)), shot)
+    return_dict[shot]['stats'] = calculate_statistics(raw_image_data)
+    print "shot:{} Delta t:{} ms. Shot:{} calculate_statistics".format(int(1000*(time.time()-start_time)), shot)
+    # reshapes the data into a 2d array
+    return_dict[shot]['image'] = numpy.reshape(raw_image_data, (nrows, ncols), 'C').tolist()
+    print "shot:{} Delta t:{} ms. Shot:{} Data append".format(int(1000*(time.time()-start_time)), shot)
 
 
 class BlackflyCamera(object):
@@ -217,8 +246,11 @@ class BlackflyCamera(object):
             shots = self.parameters['shotsPerMeasurement']
         except KeyError:
             shots = 1
+        manager = multiprocessing.Manager()
+        return_dict = manager.dict()
+        jobs = []
+        ret_val = (0, {})
         for shot in range(shots):
-            print "Delta t:{} ms. Starting to take shot:{}".format(int(1000*(time.time()-self.start_time)), shot)
             try:
                 image = self.camera_instance.retrieveBuffer()
                 print "Delta t:{} ms. Shot:{} buffer retrieved".format(int(1000*(time.time()-self.start_time)), shot)
@@ -229,38 +261,20 @@ class BlackflyCamera(object):
                 #6) # code for PNG
             except PyCapture2.Fc2error as fc2Err:
                 print fc2Err
-                return (1, "Error", {})
+                ret_val = (1, "Error")
+                break
 
-            # retrieves raw image data from the camera buffer
-            raw_image_data = numpy.array(image.getData(),dtype=numpy.uint8)
-            #raw_image_data = numpy.array(image.getData())
-            print "Delta t:{} ms. Shot:{} raw_image_data".format(int(1000*(time.time()-self.start_time)), shot)
-            # finds the number of rows in the image data
-            self.nrows = PyCapture2.Image.getRows(image)
-            print "self.nrows:{}".format(self.nrows)
-            print "Delta t:{} ms. Shot:{} self.nrows".format(int(1000*(time.time()-self.start_time)), shot)
-            # finds the number of columns in the image data
-            self.ncols = PyCapture2.Image.getDataSize(image) / self.nrows
-            print "self.ncols:{}".format(self.ncols)
-            print "Delta t:{} ms. Shot:{} self.ncols".format(int(1000*(time.time()-self.start_time)), shot)
-            ncols = PyCapture2.Image.getCols(image)
-            print "ncols:{}".format(ncols)
-            print "Delta t:{} ms. Shot:{} ncols".format(int(1000*(time.time()-self.start_time)), shot)
-            #actualdatasize=PyCapture2.Image.getRecievedDataSize(image)
-            #if self.ncols != ncols:
-            #    print "Image settings and image shape do not agree. getCols:{}, getRows:{}".format(ncols,nrows)
-            self.calculate_statistics(raw_image_data)
-            print "Delta t:{} ms. Shot:{} calculate_statistics".format(int(1000*(time.time()-self.start_time)), shot)
-            # reshapes the data into a 2d array
-            self.data.append(numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C').tolist())
-            print "Delta t:{} ms. Shot:{} Data append".format(int(1000*(time.time()-self.start_time)), shot)
-        self.error = 0
-        #self.imageNum += 1
-        return (self.error, self.data, self.stats)
+            p = multiprocessing.Process(target=worker, args=(i,return_dict,image,self.start_time))
+            jobs.append(p)
+            p.start()
 
-    def calculate_statistics(self, data):
-        self.stats = {}
-        self.stats['mean'] = numpy.mean(data)
+        for proc in jobs:
+            proc.join()
+
+        if ret_val[0] == 0:
+            return (self.error, return_dict)
+        else:
+            return ret_val
 
     def get_data(self):
         data = self.data

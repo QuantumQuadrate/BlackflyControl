@@ -27,7 +27,8 @@ import PyCapture2
 
 import numpy
 import multiprocessing
-
+import scipy.ndimage.measurements as measurements
+from scipy.ndimage.morphology import generate_binary_structure, binary_erosion, binary_opening
 
 def print_image_info(image):
     """Print image PyCapture2 image object info.
@@ -43,31 +44,6 @@ def print_image_info(image):
     # reshapes the data into a 2d array
     data = numpy.reshape(raw_image_data, (nrows, ncols), 'C')
     print (0, nrows, ncols, data)
-
-
-def calculate_statistics(data):
-    stats = {}
-    stats['mean'] = numpy.mean(data)
-    return stats
-
-
-def worker(shot, return_dict, image, start_time):
-    print "shot:{} Delta t:{} ms. Starting to take shot:{}".format(shot, int(1000*(time.time()-start_time)), shot)
-    # retrieves raw image data from the camera buffer
-    # TODO: link datatype to image format from settings
-    raw_image_data = numpy.array(image.getData(), dtype=numpy.uint8)
-    print "shot:{} Delta t:{} ms. Shot:{} raw_image_data".format(int(1000*(time.time()-start_time)), shot)
-    # finds the number of rows/cols in the image data
-    nrows = PyCapture2.Image.getRows(image)
-    ncols = PyCapture2.Image.getCols(image)
-    print "nrows:{}".format(nrows)
-    print "ncols:{}".format(ncols)
-    print "shot:{} Delta t:{} ms. Shot:{} ncols".format(int(1000*(time.time()-start_time)), shot)
-    return_dict[shot]['stats'] = calculate_statistics(raw_image_data)
-    print "shot:{} Delta t:{} ms. Shot:{} calculate_statistics".format(int(1000*(time.time()-start_time)), shot)
-    # reshapes the data into a 2d array
-    return_dict[shot]['image'] = numpy.reshape(raw_image_data, (nrows, ncols), 'C').tolist()
-    print "shot:{} Delta t:{} ms. Shot:{} Data append".format(int(1000*(time.time()-start_time)), shot)
 
 
 class BlackflyCamera(object):
@@ -237,20 +213,29 @@ class BlackflyCamera(object):
         # writes to the camera
         self.camera_instance.writeRegister(shutter_address, shutter)
 
+    def calculate_statistics(self,data):
+        self.stats = {}
+        percentile=99.5
+        threshold=numpy.percentile(data,percentile) # Set threshold
+        thresholdmask=data<threshold# Mask pixels having brightness less than given threshold
+        openingmask=binary_opening(thresholdmask) # Apply dilation-erosion to exclude possible noise
+        temp=numpy.ma.array(data,mask=openingmask)
+        [COM_Y,COM_X]=measurements.center_of_mass(temp) # Center of mass
+        self.stats['X'] = COM_X
+        self.stats['Y'] = COM_Y
+        print self.stats
+
     # Gets one image from the camera
     def GetImage(self):
-        # Attempts to read an image from the camera buffer
+            # Attempts to read an image from the camera buffer
         self.error = 1
         self.data = []
         try:
             shots = self.parameters['shotsPerMeasurement']
         except KeyError:
             shots = 1
-        manager = multiprocessing.Manager()
-        return_dict = manager.dict()
-        jobs = []
-        ret_val = (0, {})
         for shot in range(shots):
+            print "Delta t:{} ms. Starting to take shot:{}".format(int(1000*(time.time()-self.start_time)), shot)
             try:
                 image = self.camera_instance.retrieveBuffer()
                 print "Delta t:{} ms. Shot:{} buffer retrieved".format(int(1000*(time.time()-self.start_time)), shot)
@@ -261,20 +246,25 @@ class BlackflyCamera(object):
                 #6) # code for PNG
             except PyCapture2.Fc2error as fc2Err:
                 print fc2Err
-                ret_val = (1, "Error")
-                break
+                return (1, "Error", {})
 
-            p = multiprocessing.Process(target=worker, args=(i,return_dict,image,self.start_time))
-            jobs.append(p)
-            p.start()
+            # retrieves raw image data from the camera buffer
+            raw_image_data = numpy.array(image.getData(),dtype=numpy.uint8)
+            print "Delta t:{} ms. Shot:{} raw_image_data".format(int(1000*(time.time()-self.start_time)), shot)
+            # finds the number of rows in the image data
+            self.nrows = PyCapture2.Image.getRows(image)
+            self.ncols = PyCapture2.Image.getCols(image)
 
-        for proc in jobs:
-            proc.join()
-
-        if ret_val[0] == 0:
-            return (self.error, return_dict)
-        else:
-            return ret_val
+                        # reshapes the data into a 2d array
+            reshaped_image_data=numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C')
+            print "Delta t:{} ms. Shot:{} Reshaped".format(int(1000*(time.time()-self.start_time)), shot)
+            self.calculate_statistics(reshaped_image_data)
+            print "Delta t:{} ms. Shot:{} calculate_statistics".format(int(1000*(time.time()-self.start_time)), shot)
+            #self.data.append(reshaped_image_data.tolist())
+            #print "Delta t:{} ms. Shot:{} Data append".format(int(1000*(time.time()-self.start_time)), shot)
+        self.error = 0
+        #self.imageNum += 1
+        return (self.error, self.data, self.stats)
 
     def get_data(self):
         data = self.data

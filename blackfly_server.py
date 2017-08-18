@@ -100,7 +100,7 @@ class BlackflyServer(object):
     def check_cameras(self):
         for serial in self.cameras:
             if self.cameras[serial].status == 'ACQUIRING':
-                err, data = self.cameras[serial].GetImage()
+                err, data ,stats= self.cameras[serial].GetImage()
                 if err == 0:
                     # TODO: multi shot experiments
                     self.logger.info('Recieved {} image.'.format(len(data)))
@@ -143,11 +143,12 @@ class BlackflyServer(object):
         for c in self.cameras:
             msg = 'Fetching information from Camera: `{}`'.format(c)
             self.logger.info(msg)
-            err, data = self.cameras[c].get_data()
+            err, data, stats= self.cameras[c].get_data()
             try:
                 results[c] = {
                     'error': err,
-                    'data': data
+                    'data': data,
+                    'stats': stats
                 }
             except AttributeError:
                 results[c] = {'error': 1, 'data': {}}
@@ -162,7 +163,7 @@ class BlackflyServer(object):
     def get_image(self, msg):
         """Retrieve a single image from a camera by serial number."""
         serial = msg['serial']
-        err, data = self.cameras[serial].get_data()
+        err, data ,stats= self.cameras[serial].get_data()
         if err:
             self.logger.exception("does this work?")
         else:

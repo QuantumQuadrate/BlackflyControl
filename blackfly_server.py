@@ -103,7 +103,7 @@ class BlackflyServer(object):
                 err, data ,stats= self.cameras[serial].GetImage()
                 if err == 0:
                     # TODO: multi shot experiments
-                    self.logger.info('Recieved {} image.'.format(len(data)))
+                    self.logger.info('Received image.')
                 else:
                     self.logger.error('An error occurred getting an image.')
                 self.cameras[serial].stop_capture()
@@ -204,7 +204,7 @@ class BlackflyServer(object):
         except:
             resp = "Unable to parse message from client: {}."
             self.logger.exception(resp.format(msg))
-        self.logger.debug('recieved `{}` cmd'.format(action))
+        self.logger.debug('received `{}` cmd'.format(action))
 
         # register an error as the fall through
         valid = False
@@ -314,6 +314,7 @@ class BlackflyServer(object):
                 self.cameras[c].start_capture()
             status = 0
             resp = "Acquisition successfully started."
+            self.logger.info("Acquisition successfully started.")
         except:
             status = 1
             resp = "Error encountered during acqusition."

@@ -136,7 +136,7 @@ class BlackflyCamera(object):
         # #     is called. Older images will be dropped. See p. 93 in the PyCapture 2 API Reference manual.
         # # 1 = The camera retrieves the oldest image from the buffer each time RetrieveBuffer() is called.
         # #     Ungrabbed images will accumulated until the buffer is full, after which the oldest will be deleted.
-        # PyCapture2.GRAB_MODE = 0
+        PyCapture2.GRAB_MODE = 0
 
         self.isInitialized = True
 
@@ -213,17 +213,17 @@ class BlackflyCamera(object):
         # writes to the camera
         self.camera_instance.writeRegister(shutter_address, shutter)
 
-    def calculate_statistics(self,data):
-        self.stats = {}
+    def calculate_statistics(self,data,shot):
+        if shot==0:
+            self.stats = {} # If this is the first shot, empty the stat.
         percentile=99.5
         threshold=numpy.percentile(data,percentile) # Set threshold
         thresholdmask=data<threshold# Mask pixels having brightness less than given threshold
         openingmask=binary_opening(thresholdmask) # Apply dilation-erosion to exclude possible noise
         temp=numpy.ma.array(data,mask=openingmask)
         [COM_Y,COM_X]=measurements.center_of_mass(temp) # Center of mass
-        self.stats['X'] = COM_X
-        self.stats['Y'] = COM_Y
-        print self.stats
+        self.stats['X{}'.format(shot)]=COM_X
+        self.stats['Y{}'.format(shot)]=COM_Y
 
     # Gets one image from the camera
     def GetImage(self):
@@ -235,35 +235,23 @@ class BlackflyCamera(object):
         except KeyError:
             shots = 1
         for shot in range(shots):
-            print "Delta t:{} ms. Starting to take shot:{}".format(int(1000*(time.time()-self.start_time)), shot)
+            #print "Delta t:{} ms. Starting to take shot:{}".format(int(1000*(time.time()-self.start_time)), shot)
             try:
                 image = self.camera_instance.retrieveBuffer()
-                print "Delta t:{} ms. Shot:{} buffer retrieved".format(int(1000*(time.time()-self.start_time)), shot)
-                #print "get image!!!"
-                #image.save("D:/test_imgs/MOT_image_{}_{}.png".format(
-                #    self.imageNum,
-                #    shot),
-                #6) # code for PNG
+                print "buffer retrieved"
             except PyCapture2.Fc2error as fc2Err:
                 print fc2Err
                 return (1, "Error", {})
 
             # retrieves raw image data from the camera buffer
             raw_image_data = numpy.array(image.getData(),dtype=numpy.uint8)
-            print "Delta t:{} ms. Shot:{} raw_image_data".format(int(1000*(time.time()-self.start_time)), shot)
-            # finds the number of rows in the image data
             self.nrows = PyCapture2.Image.getRows(image)
             self.ncols = PyCapture2.Image.getCols(image)
-
-                        # reshapes the data into a 2d array
+            # reshapes the data into a 2d array
             reshaped_image_data=numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C')
-            print "Delta t:{} ms. Shot:{} Reshaped".format(int(1000*(time.time()-self.start_time)), shot)
-            self.calculate_statistics(reshaped_image_data)
-            print "Delta t:{} ms. Shot:{} calculate_statistics".format(int(1000*(time.time()-self.start_time)), shot)
-            #self.data.append(reshaped_image_data.tolist())
-            #print "Delta t:{} ms. Shot:{} Data append".format(int(1000*(time.time()-self.start_time)), shot)
+            self.calculate_statistics(reshaped_image_data,shot)
         self.error = 0
-        #self.imageNum += 1
+        print self.stats
         return (self.error, self.data, self.stats)
 
     def get_data(self):

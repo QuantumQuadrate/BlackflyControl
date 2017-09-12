@@ -26,9 +26,9 @@ import time
 import PyCapture2
 
 import numpy
-import multiprocessing
 import scipy.ndimage.measurements as measurements
-from scipy.ndimage.morphology import generate_binary_structure, binary_erosion, binary_opening
+from scipy.ndimage.morphology import binary_opening
+
 
 def print_image_info(image):
     """Print image PyCapture2 image object info.
@@ -58,7 +58,7 @@ class BlackflyCamera(object):
 
         # default parameters
         self.parameters = {
-            'serial': 16483677, # should this be hardcoded? MK
+            'serial': 16483677,  # should this be hardcoded? MK
             'triggerDelay': 0,
             'exposureTime': 1
         }
@@ -100,7 +100,8 @@ class BlackflyCamera(object):
         for i in range(retries):
             try:
                 regVal = self.camera_instance.readRegister(cameraPower)
-            except PyCapture2.Fc2error:  # Camera might not respond to register reads during powerup.
+            # Camera might not respond to register reads during powerup.
+            except PyCapture2.Fc2error:
                 pass
             awake = True
             if regVal == powerVal:
@@ -114,11 +115,13 @@ class BlackflyCamera(object):
         # # Use these three lines to check camera info, if desired
         # self.camInfo = self.camera_instance.getCameraInfo()
         # resolution_str = self.camInfo.sensorResolution
-        # self.cam_resolution = map(int, resolution_str.split('x'))    # converts the resolution information to an int list
+        # converts the resolution information to an int list
+        # self.cam_resolution = map(int, resolution_str.split('x'))
         # # print "Serial number - ", self.camInfo.serialNumber
         # # print "Camera model - ", self.camInfo.modelName
 
-        # # Enables the camera's 3.3V, 120mA output on GPIO pin 3 (red jacketed lead) if needed
+        # # Enables the camera's 3.3V, 120mA output on GPIO pin 3 (red jacketed
+        # lead) if needed
         # output_voltage = 0x19D0
         # voltage_mode = 0x00000001
         # self.camera[cam_index].writeRegister(output_voltage, voltage_mode)
@@ -150,7 +153,7 @@ class BlackflyCamera(object):
         self.SetExposureTime(self.parameters['exposureTime'])
         self.SetGigEConfig(self.parameters['gigEConfig'])
         self.SetGigEStreamChannel(self.parameters['gigEStreamChannel'])
-        #print self.camera_instance.getGigEStreamChannelInfo(0).__dict__
+        # print self.camera_instance.getGigEStreamChannelInfo(0).__dict__
         self.SetGigEImageSettings(self.parameters['gigEImageSettings'])
 
     # Sets the delay between external trigger and frame acquisition
@@ -162,7 +165,7 @@ class BlackflyCamera(object):
 
     def SetGigEImageSettings(self, gigEImageSettings):
         self.camera_instance.setGigEImageSettings(**gigEImageSettings)
-        #print self.camera_instance.getGigEImageSettings().__dict__
+        # print self.camera_instance.getGigEImageSettings().__dict__
 
     def SetGigEStreamChannel(self, gigEStreamChannel):
         if 'packetSize' in gigEStreamChannel:
@@ -213,17 +216,19 @@ class BlackflyCamera(object):
         # writes to the camera
         self.camera_instance.writeRegister(shutter_address, shutter)
 
-    def calculate_statistics(self,data,shot):
-        if shot==0:
-            self.stats = {} # If this is the first shot, empty the stat.
-        percentile=99.5
-        threshold=numpy.percentile(data,percentile) # Set threshold
-        thresholdmask=data<threshold# Mask pixels having brightness less than given threshold
-        openingmask=binary_opening(thresholdmask) # Apply dilation-erosion to exclude possible noise
-        temp=numpy.ma.array(data,mask=openingmask)
-        [COM_Y,COM_X]=measurements.center_of_mass(temp) # Center of mass
-        self.stats['X{}'.format(shot)]=COM_X
-        self.stats['Y{}'.format(shot)]=COM_Y
+    def calculate_statistics(self, data, shot):
+        if shot == 0:
+            self.stats = {}  # If this is the first shot, empty the stat.
+        percentile = 99.5
+        threshold = numpy.percentile(data, percentile)  # Set threshold
+        # Mask pixels having brightness less than given threshold
+        thresholdmask = data < threshold
+        # Apply dilation-erosion to exclude possible noise
+        openingmask = binary_opening(thresholdmask)
+        temp = numpy.ma.array(data, mask=openingmask)
+        [COM_Y, COM_X] = measurements.center_of_mass(temp)  # Center of mass
+        self.stats['X{}'.format(shot)] = COM_X
+        self.stats['Y{}'.format(shot)] = COM_Y
 
     # Gets one image from the camera
     def GetImage(self):
@@ -244,12 +249,16 @@ class BlackflyCamera(object):
                 return (1, "Error", {})
 
             # retrieves raw image data from the camera buffer
-            raw_image_data = numpy.array(image.getData(),dtype=numpy.uint8)
+            raw_image_data = numpy.array(image.getData(), dtype=numpy.uint8)
             self.nrows = PyCapture2.Image.getRows(image)
             self.ncols = PyCapture2.Image.getCols(image)
             # reshapes the data into a 2d array
-            reshaped_image_data=numpy.reshape(raw_image_data, (self.nrows, self.ncols), 'C')
-            self.calculate_statistics(reshaped_image_data,shot)
+            reshaped_image_data = numpy.reshape(
+                raw_image_data,
+                (self.nrows, self.ncols),
+                'C'
+            )
+            self.calculate_statistics(reshaped_image_data, shot)
         self.error = 0
         print self.stats
         return (self.error, self.data, self.stats)
@@ -265,7 +274,8 @@ class BlackflyCamera(object):
         return (error, data, stats)
 
     def WaitForAcquisition(self):
-        # Pauses program for 'pausetime' seconds, to allow the camera to acquire an image
+        # Pauses program for 'pausetime' seconds, to allow the camera to
+        # acquire an image
         pausetime = 0.025
         time.sleep(pausetime)
 

@@ -100,14 +100,13 @@ class BlackflyServer(object):
     def check_cameras(self):
         for serial in self.cameras:
             if self.cameras[serial].status == 'ACQUIRING':
-                err, data ,stats= self.cameras[serial].GetImage()
+                err, data, stats = self.cameras[serial].GetImage()
                 if err == 0:
                     # TODO: multi shot experiments
                     self.logger.info('Received image.')
                 else:
                     self.logger.error('An error occurred getting an image.')
                 self.cameras[serial].stop_capture()
-
 
     def get_cameras(self):
         """Get all attached blackfly cameras.
@@ -143,7 +142,7 @@ class BlackflyServer(object):
         for c in self.cameras:
             msg = 'Fetching information from Camera: `{}`'.format(c)
             self.logger.info(msg)
-            err, data, stats= self.cameras[c].get_data()
+            err, data, stats = self.cameras[c].get_data()
             try:
                 results[c] = {
                     'error': err,
@@ -163,16 +162,15 @@ class BlackflyServer(object):
     def get_image(self, msg):
         """Retrieve a single image from a camera by serial number."""
         serial = msg['serial']
-        err, data ,stats= self.cameras[serial].get_data()
+        err, data, stats = self.cameras[serial].get_data()
+        resp = 'success'
         if err:
-            self.logger.exception("does this work?")
-        else:
-            self.logger.info('all good')
-            self.logger.info(type(data))
+            resp = "An error was encountered acquiring image data."
+            self.logger.error(resp)
         self.socket.send_json({
             'image': data.tolist(),
-            'status': 0,
-            'message': 'success'
+            'status': err,
+            'message': resp
         })
 
     def loop(self):

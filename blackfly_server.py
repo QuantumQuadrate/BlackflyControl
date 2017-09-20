@@ -288,7 +288,8 @@ class BlackflyServer(object):
     def setup_logger(self):
         """Initialize a logger for the server."""
         logger = logging.getLogger(__name__)
-        logger.setLevel(logging.DEBUG)
+        #logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.INFO)
         ch = logging.StreamHandler()
         ch.setLevel(logging.DEBUG)
         fmtstr = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

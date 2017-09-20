@@ -222,13 +222,20 @@ class BlackflyCamera(object):
         percentile = 99.5
         threshold = numpy.percentile(data, percentile)  # Set threshold
         # Mask pixels having brightness less than given threshold
-        thresholdmask = data < threshold
+        thresholdmask = data > threshold
         # Apply dilation-erosion to exclude possible noise
         openingmask = binary_opening(thresholdmask)
-        temp = numpy.ma.array(data, mask=openingmask)
-        [COM_Y, COM_X] = measurements.center_of_mass(temp)  # Center of mass
-        self.stats['X{}'.format(shot)] = COM_X
-        self.stats['Y{}'.format(shot)] = COM_Y
+        temp=numpy.ma.array(data, mask=numpy.invert(openingmask))
+        temp2=temp.filled(0)
+        if threshold>numpy.max(temp2):
+            print "Warning : Could not locate beam, shot:{}".format(shot)
+            self.error=2
+            [COM_X, COM_Y]=[numpy.nan,numpy.nan]
+        else:
+        # Is image flipped for titled?
+            [COM_Y, COM_X] = measurements.center_of_mass(temp2)  # Center of mass.
+            self.stats['X{}'.format(shot)] = COM_X
+            self.stats['Y{}'.format(shot)] = COM_Y
 
     # Gets one image from the camera
     def GetImage(self):
@@ -259,7 +266,11 @@ class BlackflyCamera(object):
                 'C'
             )
             self.calculate_statistics(reshaped_image_data, shot)
-        self.error = 0
+        if self.error==1:
+            self.error = 0
+        elif self.error==2:
+            self.error=1
+
         print self.stats
         return (self.error, self.data, self.stats)
 

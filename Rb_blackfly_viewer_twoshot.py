@@ -41,6 +41,9 @@ import thread, time
 import numpy as np
 import scipy
 from scipy import misc, ndimage
+import scipy.ndimage.measurements as measurements
+from scipy.ndimage.morphology import binary_opening, binary_erosion
+from scipy.signal import medfilt
 
 # pyqtgraph part
 app = QtGui.QApplication([])
@@ -167,7 +170,7 @@ shutter_bin = bits0_7 + bits8_19 + bits20_31
 shutter = int(shutter_bin, 2)
 c.writeRegister(shutter_address, shutter)
 
-settings= {"offsetX": 300, "offsetY": 100, "width": 900, "height":500, "pixelFormat": PyCapture2.PIXEL_FORMAT.MONO8}
+settings= {"offsetX": 0, "offsetY": 0, "width": 960, "height":600, "pixelFormat": PyCapture2.PIXEL_FORMAT.MONO8}
 c.setGigEImageSettings(**settings)
 # Instructs the camera to retrieve only the newest image from the buffer each time the RetrieveBuffer() function is called.
 # Older images will be dropped.
@@ -182,6 +185,24 @@ c.startCapture()
 imageNum = 0
 interval=5 # ms
 percentile=99.5
+
+def calculate_statistics(data):
+    percentile = 99.5
+    starttime=time.time()
+    threshold = np.percentile(data, percentile)  # Set threshold
+    thresholdmask = data > threshold
+    # Apply dilation-erosion to exclude isolated bright pixels
+    openingmask = binary_opening(thresholdmask)
+    temp=np.ma.array(data, mask=np.invert(openingmask))
+    # Fill 0 to masked pixels so they do not contribute to the following center of mass calculation
+    temp2=temp.filled(0)
+    if threshold>np.max(temp2):
+        print "Warning : could not locate the beam positions"
+        [COM_X, COM_Y]=[0,0]
+    else:
+        [COM_X, COM_Y] = measurements.center_of_mass(temp2)  # Center of mass
+    return COM_X, COM_Y,temp2
+
 def updateData():
     try:
         starttime=time.time()
@@ -197,13 +218,13 @@ def updateData():
         orienteddata1=np.flip(reshapeddata1.transpose(1,0),1)
         orienteddata2=np.flip(reshapeddata2.transpose(1,0),1)
         orienteddata=orienteddata1-orienteddata2
-        [FORT_COM_X,FORT_COM_Y]=np.unravel_index(np.argmax(orienteddata),orienteddata.shape) # locate maximum arg
-        [Ground_COM_X,Ground_COM_Y]=np.unravel_index(np.argmin(orienteddata),orienteddata.shape) # locate maximum arg
+        [FORT_COM_X,FORT_COM_Y,temp1]=calculate_statistics(orienteddata1)#np.unravel_index(np.argmax(orienteddata),orienteddata.shape) # locate maximum arg
+        [Ground_COM_X,Ground_COM_Y,temp2]=calculate_statistics(orienteddata2)#np.unravel_index(np.argmin(orienteddata),orienteddata.shape) # locate maximum arg
         #displayeddata=np.absolute(orienteddata)
         displayeddata=np.zeros((ncols,nrows,3))
-        displayeddata[:,:,0]=orienteddata1
-        displayeddata[:,:,1]=orienteddata2
-        displayeddata[:,:,2]=np.absolute(orienteddata1-orienteddata2)
+        displayeddata[:,:,0]=temp1#orienteddata1
+        displayeddata[:,:,1]=temp2#orienteddata2
+        displayeddata[:,:,2]=0#np.absolute(orienteddata1-orienteddata2)
         img.setImage(displayeddata)
         #img.setLevels([0,np.max(displayeddata)])
         scatter.setData(pos=[[FORT_COM_X,FORT_COM_Y]],size=8,symbol='o',brush=(255,0,120))

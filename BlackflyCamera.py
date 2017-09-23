@@ -230,7 +230,7 @@ class BlackflyCamera(object):
         if threshold>numpy.max(temp2):
             print "Warning : Could not locate beam, shot:{}".format(shot)
             self.error=2
-            [COM_X, COM_Y]=[numpy.nan,numpy.nan]
+            [COM_Y, COM_X]=[numpy.nan,numpy.nan]
         else:
         # Is image flipped for titled?
             [COM_Y, COM_X] = measurements.center_of_mass(temp2)  # Center of mass.

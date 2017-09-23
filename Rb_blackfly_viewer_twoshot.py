@@ -196,12 +196,46 @@ def calculate_statistics(data):
     temp=np.ma.array(data, mask=np.invert(openingmask))
     # Fill 0 to masked pixels so they do not contribute to the following center of mass calculation
     temp2=temp.filled(0)
-    if threshold>np.max(temp2):
-        print "Warning : could not locate the beam positions"
+    # Full image analysis
+    [COM_X, COM_Y, error]=locator(temp2,threshold)
+
+    which_laser(temp2,COM_X,COM_Y,threshold)
+    return COM_X, COM_Y,temp2
+
+def which_laser(preprocessed_data,COM_X,COM_Y,threshold):
+    # Subimage analysis : Use the center of mass obtained from full analysis to distinguish red and FORT sites.
+    [fullwidth, fullheight]=np.shape(preprocessed_data)
+    [fort_spacer,subimage_halfheight,subimage_halfwidth]=[42,15,15]
+    verts=[[0,1],[0,-1]]
+    horiz=[[-2,0],[-1,0],[1,0],[2,0]]
+    temp_ones=np.ones((fullwidth,fullheight))
+    vert_detect=0
+    for i in verts:
+        X1=i[0]*fort_spacer+np.int(COM_X)-subimage_halfheight
+        X2=i[0]*fort_spacer+np.int(COM_X)+subimage_halfheight
+        Y1=i[1]*fort_spacer+np.int(COM_Y)-subimage_halfwidth
+        Y2=i[1]*fort_spacer+np.int(COM_Y)+subimage_halfwidth
+        temp_ones[X1:X2,Y1:Y2]=0
+        temp3=np.ma.array(preprocessed_data,mask=temp_ones)
+        temp4=temp3.filled(0)
+        [sub_X,sub_Y,sub_error]=locator(temp4,threshold)
+        if sub_error==0: # If vertical component exists,
+            vert_detect=1 # raise vert flag, claim this to be ground laser
+    if vert_detect==1:
+        print "this is ground!"
+    elif vert_detect==0:
+        print "this is likely FORT"
+
+def locator(data,threshold):
+    error=1
+    if threshold>np.max(data):
+        #print "Warning: Low SNR"
         [COM_X, COM_Y]=[0,0]
     else:
-        [COM_X, COM_Y] = measurements.center_of_mass(temp2)  # Center of mass
-    return COM_X, COM_Y,temp2
+        [COM_X, COM_Y] = measurements.center_of_mass(data)  # Center of mass
+        error=0
+
+    return [COM_X, COM_Y, error]
 
 def updateData():
     try:

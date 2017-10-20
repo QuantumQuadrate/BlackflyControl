@@ -230,12 +230,12 @@ class BlackflyCamera(object):
         if threshold>numpy.max(temp2):
             print "Warning : Could not locate beam, shot:{}".format(shot)
             self.error=2
-            [COM_Y, COM_X]=[numpy.nan,numpy.nan]
+            [COM_X, COM_Y]=[numpy.nan,numpy.nan]
         else:
         # Is image flipped for titled?
             [COM_Y, COM_X] = measurements.center_of_mass(temp2)  # Center of mass.
-            self.stats['X{}'.format(shot)] = COM_X
-            self.stats['Y{}'.format(shot)] = COM_Y
+        self.stats['X{}'.format(shot)] = COM_X
+        self.stats['Y{}'.format(shot)] = COM_Y
 
     # Gets one image from the camera
     def GetImage(self):
@@ -253,6 +253,9 @@ class BlackflyCamera(object):
                 print "buffer retrieved"
             except PyCapture2.Fc2error as fc2Err:
                 print fc2Err
+                print "Error occured. statistis set to NaN"
+                self.stats['X{}'.format(shot)] = numpy.NaN
+                self.stats['Y{}'.format(shot)] = numpy.NaN
                 return (1, "Error", {})
 
             # retrieves raw image data from the camera buffer

@@ -251,29 +251,30 @@ class BlackflyCamera(object):
             try:
                 image = self.camera_instance.retrieveBuffer()
                 print "buffer retrieved"
+
+                # retrieves raw image data from the camera buffer
+                raw_image_data = numpy.array(image.getData(), dtype=numpy.uint8)
+                self.nrows = PyCapture2.Image.getRows(image)
+                self.ncols = PyCapture2.Image.getCols(image)
+                # reshapes the data into a 2d array
+                reshaped_image_data = numpy.reshape(
+                    raw_image_data,
+                    (self.nrows, self.ncols),
+                    'C'
+                )
+                self.calculate_statistics(reshaped_image_data, shot)
+                if self.error==1:
+                    self.error = 0
+                elif self.error==2:
+                    self.error=1
             except PyCapture2.Fc2error as fc2Err:
                 print fc2Err
-                print "Error occured. statistis set to NaN"
+                print "Error occured. statistics for this shot will be set to NaN"
                 self.stats['X{}'.format(shot)] = numpy.NaN
                 self.stats['Y{}'.format(shot)] = numpy.NaN
-                return (1, "Error", {})
-
-            # retrieves raw image data from the camera buffer
-            raw_image_data = numpy.array(image.getData(), dtype=numpy.uint8)
-            self.nrows = PyCapture2.Image.getRows(image)
-            self.ncols = PyCapture2.Image.getCols(image)
-            # reshapes the data into a 2d array
-            reshaped_image_data = numpy.reshape(
-                raw_image_data,
-                (self.nrows, self.ncols),
-                'C'
-            )
-            self.calculate_statistics(reshaped_image_data, shot)
-        if self.error==1:
-            self.error = 0
-        elif self.error==2:
-            self.error=1
-
+                self.error=1
+                self.data=fc2Err
+                #return (1, "Error", {})
         print self.stats
         return (self.error, self.data, self.stats)
 

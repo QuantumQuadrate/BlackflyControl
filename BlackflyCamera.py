@@ -215,6 +215,49 @@ class BlackflyCamera(object):
         shutter = int(shutter_bin, 2)
         # writes to the camera
         self.camera_instance.writeRegister(shutter_address, shutter)
+      
+      
+#    def calculate_statistics(data):
+#        percentile = 99.2
+#        threshold = numpy.percentile(data, percentile)  # Set threshold
+#        # Mask pixels having brightness less than given threshold
+#        thresholdmask = data > threshold
+#      # Apply dilation-erosion to exclude possible noise
+#        openingmask = binary_opening(thresholdmask)
+#        temp=numpy.ma.array(data, mask=numpy.invert(openingmask))
+#        temp2=temp.filled(0)
+#        if threshold>numpy.max(temp2):
+#            print "Warning : Could not locate beam, shot:{}".format(shot)
+#            self.error=2
+#            [COM_XX, COM_YY]=[numpy.nan,numpy.nan]
+#        else:
+#        # Is image flipped for titled?
+#            [COM_YY, COM_XX] = measurements.center_of_mass(temp2)  # Center of mass.
+#        imgappend = []
+#        background = 0.077
+#       # for each array, reduce the size of the array in the x axis around the first centroid
+#        for x in data:
+#            imggg = []
+#            for y in range(0,len(x)):
+#                if y < (COM_XX-5-3) or y > (COM_XX+5-3):
+#                    imggg.append((background))
+#                else:
+#                    v = x[y]
+#                    imggg.append(v)
+#            imgappend.append(imggg)
+#        thresholdmask2 = imgappend > threshold
+#        openingmask2 = binary_opening(thresholdmask2)
+#        temp3=numpy.ma.array(imgappend, mask=numpy.invert(openingmask2))
+#        temp4=temp3.filled(0)
+#        #plt.close()
+#        #plt.matshow(temp2)
+#        #plt.show()
+#        #plt.close()
+#        #plt.matshow(imgappend)
+#        #plt.show()
+#        [COM_X,COM_Y] = measurements.center_of_mass(temp4)
+#        return [COM_X,COM_Y]
+
 
     def calculate_statistics(self, data, shot):
         if shot == 0:

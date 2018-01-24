@@ -219,23 +219,41 @@ class BlackflyCamera(object):
     def calculate_statistics(self, data, shot):
         if shot == 0:
             self.stats = {}  # If this is the first shot, empty the stat.
-        percentile = 99.5
-        threshold = numpy.percentile(data, percentile)  # Set threshold
+        # 1st pass of Centroid calculation
+        #percentile = 99.5
+        window=6
+        offset=0
+        #threshold = numpy.percentile(data, percentile)  # Set threshold
+        cutoff=300 # pick n-th brightest pixel signal
+        threshold=numpy.partition(data.flatten(), -cutoff)[-cutoff]
         # Mask pixels having brightness less than given threshold
         thresholdmask = data > threshold
         # Apply dilation-erosion to exclude possible noise
         openingmask = binary_opening(thresholdmask)
         temp=numpy.ma.array(data, mask=numpy.invert(openingmask))
         temp2=temp.filled(0)
+        # if no pixel is left after these image-conditioning, there is probaly no beam on the camera.
         if threshold>numpy.max(temp2):
             print "Warning : Could not locate beam, shot:{}".format(shot)
             self.error=2
             [COM_X, COM_Y]=[numpy.nan,numpy.nan]
         else:
-        # Is image flipped for titled?
+            # if there is signal, proceed to 2nd pass of centroid calculation
             [COM_Y, COM_X] = measurements.center_of_mass(temp2)  # Center of mass.
-        self.stats['X{}'.format(shot)] = COM_X
-        self.stats['Y{}'.format(shot)] = COM_Y
+            # 2nd pass of Centroid calculation
+            #Create an array filled with ones.
+            subimagemask=numpy.zeros(numpy.shape(data))
+            #Assign zeros to the window we will take a look
+            subimagemask[:,int(COM_X-window+offset):int(COM_X+window+offset)]=1
+            overlapmask=numpy.logical_and(thresholdmask,subimagemask)
+            openingmask2 = binary_opening(overlapmask)
+            temp3=numpy.ma.array(data, mask=numpy.invert(openingmask2))
+            temp4=temp3.filled(0)
+            [COM_Y, COM_X] = measurements.center_of_mass(temp4)
+        offsetX=self.parameters['gigEImageSettings']['offsetX'] # Image acqiured from the camera may not be at full screen. Add offset to pass absolute positions.
+        offsetY=self.parameters['gigEImageSettings']['offsetY']
+        self.stats['X{}'.format(shot)] = COM_X+offsetX
+        self.stats['Y{}'.format(shot)] = COM_Y+offsetY
 
     # Gets one image from the camera
     def GetImage(self):
@@ -250,7 +268,7 @@ class BlackflyCamera(object):
             #print "Delta t:{} ms. Starting to take shot:{}".format(int(1000*(time.time()-self.start_time)), shot)
             try:
                 image = self.camera_instance.retrieveBuffer()
-                print "buffer retrieved"
+                #print "buffer retrieved"
 
                 # retrieves raw image data from the camera buffer
                 raw_image_data = numpy.array(image.getData(), dtype=numpy.uint8)
@@ -266,16 +284,15 @@ class BlackflyCamera(object):
                 if self.error==1:
                     self.error = 0
                 elif self.error==2:
-                    self.error=1
+                    self.error=0
             except PyCapture2.Fc2error as fc2Err:
                 print fc2Err
                 print "Error occured. statistics for this shot will be set to NaN"
                 self.stats['X{}'.format(shot)] = numpy.NaN
                 self.stats['Y{}'.format(shot)] = numpy.NaN
                 self.error=1
-                self.data=fc2Err
                 #return (1, "Error", {})
-        print self.stats
+        #print self.stats
         return (self.error, self.data, self.stats)
 
     def get_data(self):

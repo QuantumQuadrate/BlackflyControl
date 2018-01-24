@@ -149,15 +149,20 @@ class BlackflyServer(object):
                     'data': data,
                     'stats': stats
                 }
+                print results
             except AttributeError:
                 results[c] = {'error': 1, 'data': {}}
-                resp = "Error retrieving image data."
-                #status = 1
-        self.socket.send_json({
+                resp = 'Error retrieving image data.'
+
+        try:
+            self.socket.send_json({
             'camera_data': results,
             'status': status,
             'message': resp
         })
+        except:
+            print "send_json failed."
+
 
 
     def get_image(self, msg):

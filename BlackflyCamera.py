@@ -258,6 +258,103 @@ class BlackflyCamera(object):
 #        [COM_X,COM_Y] = measurements.center_of_mass(temp4)
 #        return [COM_X,COM_Y]
 
+   # def quintuplegaussian( x, c1, mu1, sigma1,c2, mu2, sigma2,c3, mu3, sigma3,c4, mu4, sigma4,c5, mu5, sigma5, B):
+   #     res = c1 * np.exp( - (x - mu1)**2.0 / (2.0 * sigma1**2.0) ) + c2 * np.exp( - (x - mu2)**2.0 / (2.0 * sigma2**2.0) ) + c3 * np.exp( - (x - mu3)**2.0 / (2.0 * sigma3**2.0) ) + c4 * np.exp( - (x - mu4)**2.0 / (2.0 * sigma4**2.0) ) + c5 * np.exp( - (x - mu5)**2.0 / (2.0 * sigma5**2.0) ) + B
+   #     return res 
+   # def gaussian( x, c1, mu1, sigma1,B):
+   #     res = c1 * np.exp( - (x - mu1)**2.0 / (2.0 * sigma1**2.0) ) + B
+   #     return res 
+   # def centroid_calc(data):
+   #     percentile = 98
+   #     threshold = np.percentile(data, percentile)  # Set threshold
+   #     # Mask pixels having brightness less than given threshold
+   #     thresholdmask = data > threshold
+   #     # Apply dilation-erosion to exclude possible noise
+   #     openingmask = binary_opening(thresholdmask)
+   #     temp=np.ma.array(data, mask=np.invert(openingmask))
+   #     temp2=temp.filled(0)
+
+   #     if threshold>np.max(temp2):
+   #         print "Warning : Could not locate beam, shot:{}".format(shot)
+   #         self.error=2
+   #         [COM_XX, COM_YY]=[np.nan,np.nan]
+   #     else:
+   #     # Is image flipped for titled?
+   #         [COM_YY, COM_XX] = measurements.center_of_mass(temp2)  # Center of mass.
+   #     return [COM_XX,COM_YY]
+   # def img_crop(data,centroid_X,centroid_Y):
+   #     x = np.shape(data)
+   #     if x != (48,72):
+   #         y,x = data.shape
+   #         startx = int(centroid_X)-(72/2)
+   #         starty = int(centroid_Y)-(48/2)    
+   #         new_img = img[starty:starty+48,startx:startx+72]
+   #         offsetx = startx 
+   #         offsety = starty
+   #         return new_img,offsetx,offsety
+
+   #     else:
+   #         return data,0,0
+   # def centroid_img_proc(data):
+   #     # process image into a single row
+   #     x = np.shape(data)
+   #     image_int = []
+   #     for y in range(0,x[1]):
+   #         v = np.sum(data[:,y])
+   #         image_int.append(v)
+   #     return image_int
+   # def centroid_img_proc2(data,centroid_X):
+   # # process image into a single column
+   #     image_int = []
+   #     x = np.shape(data)
+   #     for y in range(0,x[0]):
+   #         v = np.sum(data[y])
+   #         image_int.append(v)
+   #     return image_int
+   # def gaussianfit_x(data,COM_XX,COM_YY):
+   #     leng = range(0,len(data))
+   #     maxx = np.max(data)
+   #     background2 = np.mean((data[0],data[2],data[3]))
+   #     fit1 = curve_fit(gaussian,leng,data,[0.5*maxx,(COM_XX-19),1.5,background2])
+   #     fit2 = curve_fit(gaussian,leng,data,[0.8*maxx,COM_XX-9.5,1.5,background2])
+   #     fit3 = curve_fit(gaussian,leng,data,[maxx,COM_XX,1.5,background2])
+   #     fit4 = curve_fit(gaussian,leng,data,[0.8*maxx,COM_XX+9,1.5,background2])
+   #     fit5 = curve_fit(gaussian,leng,data,[0.5*maxx,COM_XX+19.5,1.5,background2])
+   # #     plt.plot(data)
+   # #     print fit3[0]
+   # #     plt.plot(leng,gaussian(leng,fit1[0][0],fit1[0][1],fit1[0][2],fit1[0][3]))
+   # #     plt.plot(leng,gaussian(leng,fit2[0][0],fit2[0][1],fit2[0][2],fit2[0][3]))
+   # #     plt.plot(leng,gaussian(leng,fit3[0][0],fit3[0][1],fit3[0][2],fit3[0][3]))
+   # #     plt.plot(leng,gaussian(leng,fit4[0][0],fit4[0][1],fit4[0][2],fit4[0][3]))
+   # #     plt.plot(leng,gaussian(leng,fit5[0][0],fit5[0][1],fit5[0][2],fit5[0][3]))
+   # #     plt.show()
+   # #     plt.plot(data)
+   # #     plt.plot(leng,quintuplegaussian(leng,fit[0][0], fit[0][1], fit[0][2], fit[0][3], fit[0][4], fit[0][5], fit[0][6], fit[0][7], fit[0][8], fit[0][9], fit[0][10], fit[0][11], fit[0][12], fit[0][13], fit[0][14], fit[0][15]))
+   # #     plt.show()
+   #     plt.close
+   #     return fit3[0]
+   # def gaussianfit_y(data,COM_XX,COM_YY):
+   #     leng = range(0,len(data))
+   #     maxx = np.max(data)
+   #     background = np.mean((data[0],data[2],data[3]))
+   #     fit = curve_fit(gaussian,leng,data,[maxx,COM_YY,1,background])
+   # #     plt.plot(data)
+   # #     plt.plot(leng,gaussian(leng,fit[0][0], fit[0][1], fit[0][2], fit[0][3]))
+   # #     plt.show()
+   #     return fit[0]
+   # def calculate_statistics(data):
+   #     [Centroid_X, Centroid_Y] = centroid_calc(data)
+   #     img,offsetx,offsety = img_crop(data,Centroid_X, Centroid_Y)
+   #     processed_image = centroid_img_proc(img)
+   #     processed_image2 = centroid_img_proc2(img,Centroid_X)
+   #     Fit_values_x = gaussianfit_x(processed_image,Centroid_X,Centroid_Y)
+   #     Fit_values_y = gaussianfit_y(processed_image2,Centroid_X,Centroid_Y)
+   #     centerx = Fit_values_x[1]
+   #     centery = Fit_values_y[1] 
+   #     return [centerx,centery]
+
+
+
 
     def calculate_statistics(self, data, shot):
         if shot == 0:

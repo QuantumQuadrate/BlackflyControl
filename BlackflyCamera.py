@@ -28,7 +28,7 @@ import PyCapture2
 import numpy
 import scipy.ndimage.measurements as measurements
 from scipy.ndimage.morphology import binary_opening
-
+from scipy.optimize import curve_fit
 
 def print_image_info(image):
     """Print image PyCapture2 image object info.
@@ -215,88 +215,86 @@ class BlackflyCamera(object):
         shutter = int(shutter_bin, 2)
         # writes to the camera
         self.camera_instance.writeRegister(shutter_address, shutter)
-      
-      
-#    def calculate_statistics(data):
-#        percentile = 99.2
-#        threshold = numpy.percentile(data, percentile)  # Set threshold
-#        # Mask pixels having brightness less than given threshold
-#        thresholdmask = data > threshold
-#      # Apply dilation-erosion to exclude possible noise
-#        openingmask = binary_opening(thresholdmask)
-#        temp=numpy.ma.array(data, mask=numpy.invert(openingmask))
-#        temp2=temp.filled(0)
-#        if threshold>numpy.max(temp2):
-#            print "Warning : Could not locate beam, shot:{}".format(shot)
-#            self.error=2
-#            [COM_XX, COM_YY]=[numpy.nan,numpy.nan]
-#        else:
-#        # Is image flipped for titled?
-#            [COM_YY, COM_XX] = measurements.center_of_mass(temp2)  # Center of mass.
-#        imgappend = []
-#        background = 0.077
-#       # for each array, reduce the size of the array in the x axis around the first centroid
-#        for x in data:
-#            imggg = []
-#            for y in range(0,len(x)):
-#                if y < (COM_XX-5-3) or y > (COM_XX+5-3):
-#                    imggg.append((background))
-#                else:
-#                    v = x[y]
-#                    imggg.append(v)
-#            imgappend.append(imggg)
-#        thresholdmask2 = imgappend > threshold
-#        openingmask2 = binary_opening(thresholdmask2)
-#        temp3=numpy.ma.array(imgappend, mask=numpy.invert(openingmask2))
-#        temp4=temp3.filled(0)
-#        #plt.close()
-#        #plt.matshow(temp2)
-#        #plt.show()
-#        #plt.close()
-#        #plt.matshow(imgappend)
-#        #plt.show()
-#        [COM_X,COM_Y] = measurements.center_of_mass(temp4)
-#        return [COM_X,COM_Y]
 
-
-    def calculate_statistics(self, data, shot):
-        if shot == 0:
-            self.stats = {}  # If this is the first shot, empty the stat.
-        # 1st pass of Centroid calculation
-        #percentile = 99.5
-        window=6
-        offset=0
-        #threshold = numpy.percentile(data, percentile)  # Set threshold
-        cutoff=300 # pick n-th brightest pixel signal
-        threshold=numpy.partition(data.flatten(), -cutoff)[-cutoff]
+    def centroid_calc(self,data):
+        percentile = 98
+        threshold = numpy.percentile(data, percentile)  # Set threshold based on the percentile
         # Mask pixels having brightness less than given threshold
         thresholdmask = data > threshold
         # Apply dilation-erosion to exclude possible noise
         openingmask = binary_opening(thresholdmask)
         temp=numpy.ma.array(data, mask=numpy.invert(openingmask))
         temp2=temp.filled(0)
-        # if no pixel is left after these image-conditioning, there is probaly no beam on the camera.
-        if threshold>numpy.max(temp2):
-            print "Warning : Could not locate beam, shot:{}".format(shot)
-            self.error=2
-            [COM_X, COM_Y]=[numpy.nan,numpy.nan]
+        if threshold>numpy.max(temp2): # if there is no signal, assign NaN
+           [COM_Y, COM_X]=[numpy.nan,numpy.nan]
+           self.error=1
         else:
-            # if there is signal, proceed to 2nd pass of centroid calculation
-            [COM_Y, COM_X] = measurements.center_of_mass(temp2)  # Center of mass.
-            # 2nd pass of Centroid calculation
-            #Create an array filled with ones.
-            subimagemask=numpy.zeros(numpy.shape(data))
-            #Assign zeros to the window we will take a look
-            subimagemask[:,int(COM_X-window+offset):int(COM_X+window+offset)]=1
-            overlapmask=numpy.logical_and(thresholdmask,subimagemask)
-            openingmask2 = binary_opening(overlapmask)
-            temp3=numpy.ma.array(data, mask=numpy.invert(openingmask2))
-            temp4=temp3.filled(0)
-            [COM_Y, COM_X] = measurements.center_of_mass(temp4)
+           [COM_Y, COM_X] = measurements.center_of_mass(temp2)  # Center of mass.
+        return [COM_X,COM_Y]
+
+    def calculate_statistics(self,data,shot):
+        self.error=0 # initialize error flag to zero
+        if shot == 0:
+            self.stats = {}  # If this is the first shot, empty the stat.
         offsetX=self.parameters['gigEImageSettings']['offsetX'] # Image acqiured from the camera may not be at full screen. Add offset to pass absolute positions.
         offsetY=self.parameters['gigEImageSettings']['offsetY']
-        self.stats['X{}'.format(shot)] = COM_X+offsetX
-        self.stats['Y{}'.format(shot)] = COM_Y+offsetY
+        # Get initial guesses
+        [Centroid_X, Centroid_Y] = self.centroid_calc(data)
+
+        if self.error==0:
+            img,offsetx,offsety = img_crop(data,Centroid_X, Centroid_Y)
+            Fit_values_x, error_x = gaussianfit_x(data,Centroid_X)
+            Fit_values_y, error_y = gaussianfit_y(data,Centroid_Y)
+            if error_x==0 and error_y==0:
+                [centerx,centery] = [Fit_values_x,Fit_values_y]
+                self.stats['X{}'.format(shot)] = centerx+offsetX
+                self.stats['Y{}'.format(shot)] = centery+offsetY
+            else:
+                self.error=1
+
+        if self.error==1:
+            self.stats['X{}'.format(shot)] = numpy.Nan
+            self.stats['Y{}'.format(shot)] = numpy.Nan
+
+
+    # def calculate_statistics_original(self, data, shot):
+    #     if shot == 0:
+    #         self.stats = {}  # If this is the first shot, empty the stat.
+    #     # 1st pass of Centroid calculation
+    #     #percentile = 99.5
+    #     window=6
+    #     offset=0
+    #     #threshold = numpy.percentile(data, percentile)  # Set threshold
+    #     cutoff=300 # pick n-th brightest pixel signal
+    #     threshold=numpy.partition(data.flatten(), -cutoff)[-cutoff]
+    #     # Mask pixels having brightness less than given threshold
+    #     thresholdmask = data > threshold
+    #     # Apply dilation-erosion to exclude possible noise
+    #     openingmask = binary_opening(thresholdmask)
+    #     temp=numpy.ma.array(data, mask=numpy.invert(openingmask))
+    #     temp2=temp.filled(0)
+    #     # if no pixel is left after these image-conditioning, there is probaly no beam on the camera.
+    #     if threshold>numpy.max(temp2):
+    #         print "Warning : Could not locate beam, shot:{}".format(shot)
+    #         self.error=2
+    #         [COM_X, COM_Y]=[numpy.nan,numpy.nan]
+    #     else:
+    #         # if there is signal, proceed to 2nd pass of centroid calculation
+    #         [COM_Y, COM_X] = measurements.center_of_mass(temp2)  # Center of mass.
+    #         # 2nd pass of Centroid calculation
+    #         #Create an array filled with ones.
+    #         subimagemask=numpy.zeros(numpy.shape(data))
+    #         #Assign zeros to the window we will take a look
+    #         subimagemask[:,int(COM_X-window+offset):int(COM_X+window+offset)]=1
+    #         overlapmask=numpy.logical_and(thresholdmask,subimagemask)
+    #         openingmask2 = binary_opening(overlapmask)
+    #         temp3=numpy.ma.array(data, mask=numpy.invert(openingmask2))
+    #         temp4=temp3.filled(0)
+    #         [COM_Y, COM_X] = measurements.center_of_mass(temp4)
+    #     offsetX=self.parameters['gigEImageSettings']['offsetX'] # Image acqiured from the camera may not be at full screen. Add offset to pass absolute positions.
+    #     offsetY=self.parameters['gigEImageSettings']['offsetY']
+    #     self.stats['X{}'.format(shot)] = COM_X+offsetX
+    #     self.stats['Y{}'.format(shot)] = COM_Y+offsetY
 
     # Gets one image from the camera
     def GetImage(self):
@@ -383,3 +381,62 @@ class BlackflyCamera(object):
             self.camera_instance.disconnect()
         except:
             print "exception 2"
+
+# Five site gaussian function
+def quintuplegaussian(x, c1, mu1, sigma1,c2, mu2, sigma2,c3, mu3, sigma3,c4, mu4, sigma4,c5, mu5, sigma5, B):
+    res = c1 * numpy.exp( - (x - mu1)**2.0 / (2.0 * sigma1**2.0) ) + c2 * numpy.exp( - (x - mu2)**2.0 / (2.0 * sigma2**2.0) ) + c3 * numpy.exp( - (x - mu3)**2.0 / (2.0 * sigma3**2.0) ) + c4 * numpy.exp( - (x - mu4)**2.0 / (2.0 * sigma4**2.0) ) + c5 * numpy.exp( - (x - mu5)**2.0 / (2.0 * sigma5**2.0) ) + B
+    return res
+
+# Single gaussian function
+def gaussian( x, c1, mu1, sigma1,B):
+    res = c1 * numpy.exp( - (x - mu1)**2.0 / (2.0 * sigma1**2.0) ) + B
+    return res
+
+
+
+def img_crop(data,COM_X,COM_Y):
+   [window_H,window_W]=[72,72] # desired window size
+   [image_H,image_W] = numpy.shape(data)
+   if image_H>window_H and image_W>window_W: # check if image is larger than the size we want to crop in.
+       startx = numpy.max([0,int(COM_X-(window_W/2))])
+       endx = numpy.min([image_W,int(COM_X+(window_W/2))])
+       starty = numpy.max([0,int(COM_Y-(window_H/2))])
+       endy = numpy.min([image_H,int(COM_Y+(window_H/2))])
+
+       new_img = data[starty:endy,startx:endx]
+       [offsetx,offsety] = [startx,starty]
+       return new_img,offsetx,offsety
+   else:
+       return data,0,0
+
+def gaussianfit_x(data,COM_X):
+    error=0
+    data_1d=numpy.sum(data,axis=0) # check if the axis correctf
+    leng = range(0,len(data_1d))
+    [maxx,bg] = [numpy.max(data_1d),numpy.min(data_1d)]
+    [site_separation,sigma]=[9.5,1.5]
+    #fit1 = curve_fit(gaussian,leng,data_1d,[0.5*maxx,(COM_X-2*site_separation),sigma,bg])
+    #fit2 = curve_fit(gaussian,leng,data_1d,[0.8*maxx,COM_X-site_separation,sigma,bg])
+    try:
+        fit3 = curve_fit(gaussian,leng,data_1d,[maxx,COM_X,sigma,bg])
+        gaussian_X=fit3[0][1]
+    except RuntimeError:
+        gaussian_X=numpy.NaN
+        error=1
+    #fit4 = curve_fit(gaussian,leng,data_1d,[0.8*maxx,COM_X+site_separation,sigma,bg])
+    #fit5 = curve_fit(gaussian,leng,data_1d,[0.5*maxx,COM_X+2*site_separation,sigma,bg])
+    return gaussian_X, error
+
+def gaussianfit_y(data,COM_Y):
+    error=0
+    data_1d=numpy.sum(data,axis=1) # check if the axis correctf
+    leng = range(0,len(data_1d))
+    [maxx,bg] = [numpy.max(data_1d),numpy.min(data_1d)]
+    sigma=1
+    try:
+        fit = curve_fit(gaussian,leng,data_1d,[maxx,COM_Y,sigma,bg])
+        gaussian_Y=fit[0][1]
+    except RuntimeError:
+        gaussian_Y=numpy.NaN
+        error=1
+    return gaussian_Y, error

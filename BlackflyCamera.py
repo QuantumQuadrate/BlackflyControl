@@ -256,46 +256,6 @@ class BlackflyCamera(object):
             self.stats['X{}'.format(shot)] = numpy.Nan
             self.stats['Y{}'.format(shot)] = numpy.Nan
 
-
-    # def calculate_statistics_original(self, data, shot):
-    #     if shot == 0:
-    #         self.stats = {}  # If this is the first shot, empty the stat.
-    #     # 1st pass of Centroid calculation
-    #     #percentile = 99.5
-    #     window=6
-    #     offset=0
-    #     #threshold = numpy.percentile(data, percentile)  # Set threshold
-    #     cutoff=300 # pick n-th brightest pixel signal
-    #     threshold=numpy.partition(data.flatten(), -cutoff)[-cutoff]
-    #     # Mask pixels having brightness less than given threshold
-    #     thresholdmask = data > threshold
-    #     # Apply dilation-erosion to exclude possible noise
-    #     openingmask = binary_opening(thresholdmask)
-    #     temp=numpy.ma.array(data, mask=numpy.invert(openingmask))
-    #     temp2=temp.filled(0)
-    #     # if no pixel is left after these image-conditioning, there is probaly no beam on the camera.
-    #     if threshold>numpy.max(temp2):
-    #         print "Warning : Could not locate beam, shot:{}".format(shot)
-    #         self.error=2
-    #         [COM_X, COM_Y]=[numpy.nan,numpy.nan]
-    #     else:
-    #         # if there is signal, proceed to 2nd pass of centroid calculation
-    #         [COM_Y, COM_X] = measurements.center_of_mass(temp2)  # Center of mass.
-    #         # 2nd pass of Centroid calculation
-    #         #Create an array filled with ones.
-    #         subimagemask=numpy.zeros(numpy.shape(data))
-    #         #Assign zeros to the window we will take a look
-    #         subimagemask[:,int(COM_X-window+offset):int(COM_X+window+offset)]=1
-    #         overlapmask=numpy.logical_and(thresholdmask,subimagemask)
-    #         openingmask2 = binary_opening(overlapmask)
-    #         temp3=numpy.ma.array(data, mask=numpy.invert(openingmask2))
-    #         temp4=temp3.filled(0)
-    #         [COM_Y, COM_X] = measurements.center_of_mass(temp4)
-    #     offsetX=self.parameters['gigEImageSettings']['offsetX'] # Image acqiured from the camera may not be at full screen. Add offset to pass absolute positions.
-    #     offsetY=self.parameters['gigEImageSettings']['offsetY']
-    #     self.stats['X{}'.format(shot)] = COM_X+offsetX
-    #     self.stats['Y{}'.format(shot)] = COM_Y+offsetY
-
     # Gets one image from the camera
     def GetImage(self):
             # Attempts to read an image from the camera buffer

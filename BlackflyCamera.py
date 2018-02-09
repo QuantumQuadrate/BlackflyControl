@@ -133,14 +133,12 @@ class BlackflyCamera(object):
         trigger_mode.polarity = 1
         trigger_mode.source = 0  # specifies an external hardware trigger
         self.camera_instance.setTriggerMode(trigger_mode)
-
         # # Sets the camera grab mode:
         # # 0 = The camera retrieves only the newest image from the buffer each time the RetrieveBuffer() function
         # #     is called. Older images will be dropped. See p. 93 in the PyCapture 2 API Reference manual.
         # # 1 = The camera retrieves the oldest image from the buffer each time RetrieveBuffer() is called.
         # #     Ungrabbed images will accumulated until the buffer is full, after which the oldest will be deleted.
         PyCapture2.GRAB_MODE = 0
-
         self.isInitialized = True
 
     def update(self, parameters={}):
@@ -218,7 +216,8 @@ class BlackflyCamera(object):
 
     def centroid_calc(self,data):
         percentile = 98
-        threshold = numpy.percentile(data, percentile)  # Set threshold based on the percentile
+        # Set threshold based on the percentile
+        threshold = numpy.percentile(data, percentile)
         # Mask pixels having brightness less than given threshold
         thresholdmask = data > threshold
         # Apply dilation-erosion to exclude possible noise
@@ -253,8 +252,8 @@ class BlackflyCamera(object):
                 self.error=1
 
         if self.error==1:
-            self.stats['X{}'.format(shot)] = numpy.Nan
-            self.stats['Y{}'.format(shot)] = numpy.Nan
+            self.stats['X{}'.format(shot)] = numpy.NaN
+            self.stats['Y{}'.format(shot)] = numpy.NaN
 
     # Gets one image from the camera
     def GetImage(self):
@@ -285,7 +284,7 @@ class BlackflyCamera(object):
                 if self.error==1:
                     self.error = 0
                 elif self.error==2:
-                    self.error=0
+                    self.error=1
             except PyCapture2.Fc2error as fc2Err:
                 print fc2Err
                 print "Error occured. statistics for this shot will be set to NaN"
@@ -352,10 +351,8 @@ def gaussian( x, c1, mu1, sigma1,B):
     res = c1 * numpy.exp( - (x - mu1)**2.0 / (2.0 * sigma1**2.0) ) + B
     return res
 
-
-
 def img_crop(data,COM_X,COM_Y):
-   [window_H,window_W]=[72,72] # desired window size
+   [window_H,window_W]=[70,70] # desired window size
    [image_H,image_W] = numpy.shape(data)
    if image_H>window_H and image_W>window_W: # check if image is larger than the size we want to crop in.
        startx = numpy.max([0,int(COM_X-(window_W/2))])
@@ -371,20 +368,28 @@ def img_crop(data,COM_X,COM_Y):
 
 def gaussianfit_x(data,COM_X):
     error=0
+    gaussian_X=numpy.NaN
     data_1d=numpy.sum(data,axis=0) # check if the axis correctf
     leng = range(0,len(data_1d))
-    [maxx,bg] = [numpy.max(data_1d),numpy.min(data_1d)]
+    [amp,bg] = [numpy.max(data_1d)-numpy.median(data_1d),numpy.median(data_1d)]
     [site_separation,sigma]=[9.5,1.5]
-    #fit1 = curve_fit(gaussian,leng,data_1d,[0.5*maxx,(COM_X-2*site_separation),sigma,bg])
-    #fit2 = curve_fit(gaussian,leng,data_1d,[0.8*maxx,COM_X-site_separation,sigma,bg])
     try:
-        fit3 = curve_fit(gaussian,leng,data_1d,[maxx,COM_X,sigma,bg])
-        gaussian_X=fit3[0][1]
+        # primary guess is fit3
+        fit1 = curve_fit(gaussian,leng,data_1d,[0.2*amp,COM_X-2*site_separation,sigma,bg])
+        fit2 = curve_fit(gaussian,leng,data_1d,[0.5*amp,COM_X-1*site_separation,sigma,bg])
+        fit3 = curve_fit(gaussian,leng,data_1d,[amp,COM_X,sigma,bg])
+        fit4 = curve_fit(gaussian,leng,data_1d,[0.5*amp,COM_X+1*site_separation,sigma,bg])
+        fit5 = curve_fit(gaussian,leng,data_1d,[0.2*amp,COM_X+2*site_separation,sigma,bg])
+        amps=[fit1[0][0],fit2[0][0],fit3[0][0],fit4[0][0],fit5[0][0]]
+        # print "amp guess:{}".format(amp)
+        # print "amps :{}".format(amps)
+        # print "bg:{}".format(bg)
+        # print "bg fit:{}".format(fit3[0][3])
+        centers=[fit1[0][1],fit2[0][1],fit3[0][1],fit4[0][1],fit5[0][1]]
+        max_index=numpy.argmax(amps)
+        gaussian_X=centers[max_index]
     except RuntimeError:
-        gaussian_X=numpy.NaN
         error=1
-    #fit4 = curve_fit(gaussian,leng,data_1d,[0.8*maxx,COM_X+site_separation,sigma,bg])
-    #fit5 = curve_fit(gaussian,leng,data_1d,[0.5*maxx,COM_X+2*site_separation,sigma,bg])
     return gaussian_X, error
 
 def gaussianfit_y(data,COM_Y):

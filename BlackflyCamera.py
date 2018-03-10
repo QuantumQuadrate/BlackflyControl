@@ -214,10 +214,17 @@ class BlackflyCamera(object):
         # writes to the camera
         self.camera_instance.writeRegister(shutter_address, shutter)
 
-    def centroid_calc(self,data):
-        percentile = 98
+    def sanity_check(self, data):
+        nth_largest=10
+        value=numpy.partition(data.flatten(),-nth_largest)[-nth_largest]
+        return value
+
+    def centroid_calc(self, data):
+        #percentile = 98
+        nth_largest= 8000
         # Set threshold based on the percentile
-        threshold = numpy.percentile(data, percentile)
+        threshold=numpy.partition(data.flatten(),-nth_largest)[-nth_largest]
+        #threshold = numpy.percentile(data, percentile)
         # Mask pixels having brightness less than given threshold
         thresholdmask = data > threshold
         # Apply dilation-erosion to exclude possible noise
@@ -229,25 +236,41 @@ class BlackflyCamera(object):
            self.error=1
         else:
            [COM_Y, COM_X] = measurements.center_of_mass(temp2)  # Center of mass.
-        return [COM_X,COM_Y]
+        return COM_X, COM_Y, temp2
 
     def calculate_statistics(self,data,shot):
+        # Shot dependent magnification.
+        # This will convert the camera location into atom plane distance in um
+        #
+        PG_pixelsize=3.75
+        [mag_Red, mag_FORT]=[20.9, 23.8]
+        [conv_Red, conv_FORT]=[PG_pixelsize/mag_Red, PG_pixelsize/mag_FORT]
         self.error=0 # initialize error flag to zero
         if shot == 0:
             self.stats = {}  # If this is the first shot, empty the stat.
         offsetX=self.parameters['gigEImageSettings']['offsetX'] # Image acqiured from the camera may not be at full screen. Add offset to pass absolute positions.
         offsetY=self.parameters['gigEImageSettings']['offsetY']
         # Get initial guesses
-        [Centroid_X, Centroid_Y] = self.centroid_calc(data)
+        EV = self.sanity_check(data) # measure of correct exposure. 0 to 255
+        self.stats['EV{}'.format(shot)] = float(EV)
+        if EV==255:
+            self.error=1
+            print "Overexposed"
+        Centroid_X, Centroid_Y, preconditioned_data = self.centroid_calc(data)
 
         if self.error==0:
-            img,offsetx,offsety = img_crop(data,Centroid_X, Centroid_Y)
-            Fit_values_x, error_x = gaussianfit_x(data,Centroid_X)
-            Fit_values_y, error_y = gaussianfit_y(data,Centroid_Y)
+            img,offsetx,offsety = img_crop(preconditioned_data,Centroid_X, Centroid_Y)
+            Fit_values_x, error_x = gaussianfit_x(preconditioned_data,Centroid_X)
+            Fit_values_y, error_y = gaussianfit_y(preconditioned_data,Centroid_Y)
             if error_x==0 and error_y==0:
                 [centerx,centery] = [Fit_values_x,Fit_values_y]
-                self.stats['X{}'.format(shot)] = centerx+offsetX
-                self.stats['Y{}'.format(shot)] = centery+offsetY
+                [location_X, location_Y]=[centerx+offsetX, centery+offsetY]
+                if shot==0: # Red is configured to be the first shot
+                    [atomplane_X, atomplane_Y]=[conv_Red*location_X, conv_Red*location_Y]
+                elif shot==1:
+                    [atomplane_X, atomplane_Y]=[conv_FORT*location_X, conv_FORT*location_Y]
+                self.stats['X{}'.format(shot)] = atomplane_X
+                self.stats['Y{}'.format(shot)] = atomplane_Y
             else:
                 self.error=1
 
@@ -258,7 +281,7 @@ class BlackflyCamera(object):
     # Gets one image from the camera
     def GetImage(self):
             # Attempts to read an image from the camera buffer
-        self.error = 1
+        self.error = 0
         self.data = []
         try:
             shots = self.parameters['shotsPerMeasurement']
@@ -281,15 +304,12 @@ class BlackflyCamera(object):
                     'C'
                 )
                 self.calculate_statistics(reshaped_image_data, shot)
-                if self.error==1:
-                    self.error = 0
-                elif self.error==2:
-                    self.error=1
             except PyCapture2.Fc2error as fc2Err:
                 print fc2Err
                 print "Error occured. statistics for this shot will be set to NaN"
                 self.stats['X{}'.format(shot)] = numpy.NaN
                 self.stats['Y{}'.format(shot)] = numpy.NaN
+                self.stats['EV{}'.format(shot)] = numpy.NaN
                 self.error=1
                 #return (1, "Error", {})
         #print self.stats
@@ -352,19 +372,19 @@ def gaussian( x, c1, mu1, sigma1,B):
     return res
 
 def img_crop(data,COM_X,COM_Y):
-   [window_H,window_W]=[70,70] # desired window size
+   [window_H,window_W]=[150,300] # desired window size
    [image_H,image_W] = numpy.shape(data)
    if image_H>window_H and image_W>window_W: # check if image is larger than the size we want to crop in.
        startx = numpy.max([0,int(COM_X-(window_W/2))])
        endx = numpy.min([image_W,int(COM_X+(window_W/2))])
-       starty = numpy.max([0,int(COM_Y-(window_H/2))])
+       starty = numpy.max([1,int(COM_Y-(window_H/2))])
        endy = numpy.min([image_H,int(COM_Y+(window_H/2))])
 
        new_img = data[starty:endy,startx:endx]
        [offsetx,offsety] = [startx,starty]
        return new_img,offsetx,offsety
    else:
-       return data,0,0
+       return data, 0, 0
 
 def gaussianfit_x(data,COM_X):
     error=0
@@ -372,24 +392,26 @@ def gaussianfit_x(data,COM_X):
     data_1d=numpy.sum(data,axis=0) # check if the axis correctf
     leng = range(0,len(data_1d))
     [amp,bg] = [numpy.max(data_1d)-numpy.median(data_1d),numpy.median(data_1d)]
-    [site_separation,sigma]=[9.5,1.5]
+    [site_separation,sigma]=[52,20]
+    tolerance=20.0
     try:
         # primary guess is fit3
-        fit1 = curve_fit(gaussian,leng,data_1d,[0.2*amp,COM_X-2*site_separation,sigma,bg])
-        fit2 = curve_fit(gaussian,leng,data_1d,[0.5*amp,COM_X-1*site_separation,sigma,bg])
+        fit1 = curve_fit(gaussian,leng,data_1d,[0.4*amp,COM_X-2*site_separation,sigma,bg])
+        fit2 = curve_fit(gaussian,leng,data_1d,[0.6*amp,COM_X-1*site_separation,sigma,bg])
         fit3 = curve_fit(gaussian,leng,data_1d,[amp,COM_X,sigma,bg])
-        fit4 = curve_fit(gaussian,leng,data_1d,[0.5*amp,COM_X+1*site_separation,sigma,bg])
-        fit5 = curve_fit(gaussian,leng,data_1d,[0.2*amp,COM_X+2*site_separation,sigma,bg])
+        fit4 = curve_fit(gaussian,leng,data_1d,[0.6*amp,COM_X+1*site_separation,sigma,bg])
+        fit5 = curve_fit(gaussian,leng,data_1d,[0.4*amp,COM_X+2*site_separation,sigma,bg])
         amps=[fit1[0][0],fit2[0][0],fit3[0][0],fit4[0][0],fit5[0][0]]
-        # print "amp guess:{}".format(amp)
-        # print "amps :{}".format(amps)
-        # print "bg:{}".format(bg)
-        # print "bg fit:{}".format(fit3[0][3])
         centers=[fit1[0][1],fit2[0][1],fit3[0][1],fit4[0][1],fit5[0][1]]
         max_index=numpy.argmax(amps)
-        gaussian_X=centers[max_index]
+        X_candidate=centers[max_index]
+        #print "COM_X:{}".format(COM_X)
+        #print "X Candidate:{}".format(X_candidate)
+        if numpy.absolute(X_candidate-COM_X)<=tolerance and amps[max_index]>0:
+            gaussian_X=X_candidate
     except RuntimeError:
         error=1
+
     return gaussian_X, error
 
 def gaussianfit_y(data,COM_Y):
@@ -397,7 +419,7 @@ def gaussianfit_y(data,COM_Y):
     data_1d=numpy.sum(data,axis=1) # check if the axis correctf
     leng = range(0,len(data_1d))
     [maxx,bg] = [numpy.max(data_1d),numpy.min(data_1d)]
-    sigma=1
+    sigma=30
     try:
         fit = curve_fit(gaussian,leng,data_1d,[maxx,COM_Y,sigma,bg])
         gaussian_Y=fit[0][1]

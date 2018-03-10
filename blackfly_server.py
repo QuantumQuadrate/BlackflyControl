@@ -155,6 +155,7 @@ class BlackflyServer(object):
                 resp = 'Error retrieving image data.'
 
         try:
+            print results
             self.socket.send_json({
             'camera_data': results,
             'status': status,

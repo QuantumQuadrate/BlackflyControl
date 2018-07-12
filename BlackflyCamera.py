@@ -243,7 +243,12 @@ class BlackflyCamera(object):
         # This will convert the camera location into atom plane distance in um
         #
         PG_pixelsize=3.75
-        [mag_Red, mag_FORT]=[20.9, 23.8]
+        # 2018/05/21 calibration is [16.863 for Red, and 17.589 for FORT]
+        # Until 2018/06/22, we used: [16.63, 17.589]
+        # From 2018/06/23, we'll try [14.553, 17.589]
+        # From 2018/06/26, Rolling back to [16.63, 17.589]
+        # From 2018/07/04, trying [21.12,17.589]
+        [mag_Red, mag_FORT]=[18.054, 18.3403]
         [conv_Red, conv_FORT]=[PG_pixelsize/mag_Red, PG_pixelsize/mag_FORT]
         self.error=0 # initialize error flag to zero
         if shot == 0:
@@ -392,8 +397,8 @@ def gaussianfit_x(data,COM_X):
     data_1d=numpy.sum(data,axis=0) # check if the axis correctf
     leng = range(0,len(data_1d))
     [amp,bg] = [numpy.max(data_1d)-numpy.median(data_1d),numpy.median(data_1d)]
-    [site_separation,sigma]=[52,20]
-    tolerance=20.0
+    [site_separation,sigma]=[41,15]
+    tolerance=15.0
     try:
         # primary guess is fit3
         fit1 = curve_fit(gaussian,leng,data_1d,[0.4*amp,COM_X-2*site_separation,sigma,bg])
@@ -419,7 +424,7 @@ def gaussianfit_y(data,COM_Y):
     data_1d=numpy.sum(data,axis=1) # check if the axis correctf
     leng = range(0,len(data_1d))
     [maxx,bg] = [numpy.max(data_1d),numpy.min(data_1d)]
-    sigma=30
+    sigma=20
     try:
         fit = curve_fit(gaussian,leng,data_1d,[maxx,COM_Y,sigma,bg])
         gaussian_Y=fit[0][1]

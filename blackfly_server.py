@@ -149,7 +149,6 @@ class BlackflyServer(object):
                     'data': data,
                     'stats': stats
                 }
-                print results
             except AttributeError:
                 results[c] = {'error': 1, 'data': {}}
                 resp = 'Error retrieving image data.'
